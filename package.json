@@ -63,6 +63,7 @@
     "license": "HEADER",
     "exact_paths_method": "EXCLUDE",
     "exact_paths": [
+      "wasm-scratch",
       ".git",
       "dune",
       "dune-project",
