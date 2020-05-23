@@ -38,7 +38,7 @@ class Alloc {
   unit() {
     const p = this.alloc_p.value;
     const v = new DataView(this.memory.buffer);
-    v.setUint32(p, 0);
+    v.setInt32(p, 0, true);
     this.alloc_p.value += 4;
     return p;
   }
@@ -48,8 +48,8 @@ class Alloc {
   int32(x) {
     const p = this.alloc_p.value;
     const v = new DataView(this.memory.buffer);
-    v.setUint32(p, 1);
-    v.setInt32(p + 4, x);
+    v.setUint32(p, 1, true);
+    v.setInt32(p + 4, x, true);
     this.alloc_p.value += 8;
     return p;
   }
@@ -59,8 +59,8 @@ class Alloc {
   float32(x) {
     const p = this.alloc_p.value;
     const v = new DataView(this.memory.buffer);
-    v.setUint32(p, 2);
-    v.setFloat32(p + 4, x);
+    v.setUint32(p, 2, true);
+    v.setFloat32(p + 4, x, true);
     this.alloc_p.value += 8;
     return p;
   }
@@ -70,8 +70,8 @@ class Alloc {
   left(x) {
     const p = this.alloc_p.value;
     const v = new DataView(this.memory.buffer);
-    v.setUint32(p, 3);
-    v.setUint32(p + 4, x);
+    v.setUint32(p, 3, true);
+    v.setUint32(p + 4, x, true);
     this.alloc_p.value += 8;
     return p;
   }
@@ -81,8 +81,8 @@ class Alloc {
   right(x) {
     const p = this.alloc_p.value;
     const v = new DataView(this.memory.buffer);
-    v.setUint32(p, 4);
-    v.setUint32(p + 4, x);
+    v.setUint32(p, 4, true);
+    v.setUint32(p + 4, x, true);
     this.alloc_p.value += 8;
     return p;
   }
@@ -92,9 +92,9 @@ class Alloc {
   pair(x, y) {
     const p = this.alloc_p.value;
     const v = new DataView(this.memory.buffer);
-    v.setUint32(p, 5);
-    v.setUint32(p + 4, x);
-    v.setUint32(p + 8, y);
+    v.setUint32(p, 5, true);
+    v.setUint32(p + 4, x, true);
+    v.setUint32(p + 8, y, true);
     this.alloc_p.value += 12;
     return p;
   }
@@ -106,10 +106,10 @@ class Alloc {
     const n = b.length;
     const p = this.alloc_p.value;
     const v = new DataView(this.memory.buffer);
-    v.setUint32(p, 6);
-    v.setUint32(p + 4, n);
+    v.setUint32(p, 6, true);
+    v.setUint32(p + 4, n, true);
     for (var i = 0; i < n; i++) {
-      v.setUint8(p + 8 + i, b[i])
+      v.setUint8(p + 8 + i, b[i], true)
     }
     this.alloc_p.value += n + 8;
     return p;
@@ -124,23 +124,23 @@ class Read {
 
   from(p) {
     const v = new DataView(this.memory.buffer);
-    switch(v.getUint32(p)) {
+    switch(v.getUint32(p, true)) {
       case 0:
         return this.o.unit();
       case 1:
-        return this.o.int32(v.getInt32(p + 4));
+        return this.o.int32(v.getInt32(p + 4, true));
       case 2:
-        return this.o.float32(v.getFloat32(p + 4));
+        return this.o.float32(v.getFloat32(p + 4, true));
       case 3:
-        return this.o.left(this.from(v.getUint32(p + 4)));
+        return this.o.left(this.from(v.getUint32(p + 4, true)));
       case 4:
-        return this.o.right(this.from(v.getUint32(p + 4)));
+        return this.o.right(this.from(v.getUint32(p + 4, true)));
       case 5:
-        const x = this.from(v.getUint32(p + 4));
-        const y = this.from(v.getUint32(p + 8));
+        const x = this.from(v.getUint32(p + 4, true));
+        const y = this.from(v.getUint32(p + 8, true));
         return this.o.pair(x,y);
       case 6:
-        const n = v.getUint32(p + 4);
+        const n = v.getUint32(p + 4, true);
         const b = new Uint8Array(this.memory.buffer, p + 8, n);
         return this.o.string(new TextDecoder('utf8').decode(b));
       default:
@@ -149,30 +149,4 @@ class Read {
   }
 }
 
-function test(o) {
-  return (
-    [ o.unit(),
-      o.int32(42),
-      o.float32(3.14),
-      o.left(o.int32(-1)),
-      o.right(o.float32(NaN)),
-      o.pair(o.unit(), o.unit()),
-      o.right(o.pair(o.unit(), o.float32(Infinity))),
-      o.left(o.string("hello world")),
-      o.right(o.pair(o.unit(), o.string("right"))),
-      o.string("🌹​🎉"), // zero width space lurking
-      o.unit()
-    ]
-  )
-}
-
-console.log("reference output:")
-js = new Js ()
-test(js).forEach(x => console.log("  " + x))
-
-console.log("encode, then decode:")
-memory = new WebAssembly.Memory({initial: 1});
-alloc_p = new WebAssembly.Global({value: "i32", mutable: true}, 0);
-write = new Alloc(memory, alloc_p)
-read = new Read(memory, js)
-test(write).forEach(p => console.log("  " + read.from(p)));
+module.exports = {Alloc, Read, Js}
