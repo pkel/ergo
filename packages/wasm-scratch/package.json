@@ -1,11 +1,12 @@
 {
   "name": "wasm-scratch",
-  "version": "0.0.0",
+  "version": "0.20.9",
   "description": "explore ergo on wasm",
   "main": "lib/index.js",
   "scripts": {
-    "wasm" : "cd wasm && for f in *.wat ; do wat2wasm $f ; done",
-    "test": "npm run wasm && mocha"
+    "wasm": "cd wasm && for f in *.wat ; do wat2wasm $f ; done",
+    "test": "npm run wasm && mocha",
+    "test:cov": "nyc npm run test"
   },
   "repository": {
     "type": "git",
@@ -26,9 +27,11 @@
     "url": "https://github.com/accordproject/ergo/issues"
   },
   "homepage": "https://github.com/accordproject/ergo#readme",
-  "dependencies": {
-    "chai": "^4.2.0",
-    "mocha": "^7.2.0",
-    "semver": "^7.3.2"
+  "devDependencies": {
+    "chai": "4.2.0",
+    "eslint": "6.0.1",
+    "mocha": "5.2.0",
+    "semver": "6.2.0",
+    "nyc": "13.3.0"
   }
 }
