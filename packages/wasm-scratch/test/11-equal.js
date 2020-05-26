@@ -7,6 +7,8 @@ require('chai').should();
 function testValues(o) {
   return (
     [ o.unit(),
+      o.true(),
+      o.false(),
       o.int32(42),
       o.int32(0),
       o.float32(3.14),

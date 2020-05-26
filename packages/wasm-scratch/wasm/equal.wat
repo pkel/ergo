@@ -30,13 +30,15 @@
 
   (table 32 funcref)
   (elem (i32.const 0)
-        $eq_unit   ;; 0
-        $eq_int    ;; 1
-        $eq_float  ;; 2
-        $eq_rec1   ;; 3 left
-        $eq_rec1   ;; 4 right
-        $eq_rec2   ;; 5 pair
-        $eq_string ;; 6 string
+        $eq_unit   ;; 0 unit
+        $eq_unit   ;; 1 false
+        $eq_unit   ;; 2 true
+        $eq_int    ;; 3 int
+        $eq_float  ;; 4 float
+        $eq_rec1   ;; 5 left
+        $eq_rec1   ;; 6 right
+        $eq_rec2   ;; 7 pair
+        $eq_string ;; 8 string
         )
 
   ;; tag || nothing

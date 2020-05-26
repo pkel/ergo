@@ -20,24 +20,29 @@ defined by the tag.
 
 - Unit() : `0`
 
+## Boolean
+
+- False() : `1`
+- True() : `2`
+
 ## Numbers
 
 Let x be a 4 byte value.
-- Int32(x) : `1 x`
-- Float32(x) : `2 x`
+- Int32(x) : `3 x`
+- Float32(x) : `4 x`
 
 ## Sum
 
 Let x be a pointer to another box.
-- Left(x) : `3 x`
-- Right(x) : `4 x`
+- Left(x) : `5 x`
+- Right(x) : `6 x`
 
 ## Pair
 
 Let x and y be pointers to other boxes.
-- Pair(x,y) : `5 x y`
+- Pair(x,y) : `7 x y`
 
 ## String
 
 Let x be an n byte value.
-- String(x) : `6 n x`
+- String(x) : `8 n x`
