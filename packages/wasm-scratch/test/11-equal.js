@@ -81,9 +81,9 @@ describe('equality', async function () {
   let res = await test();
 
   describe('equality', function () {
-    res.l.forEach(l => {
-      res.r.forEach(r => {
-        it(`${l.s} === ${r.s}`, function () {
+    it(`compare results`, function () {
+      res.l.forEach(l => {
+        res.r.forEach(r => {
           res.f(l.p,r.p).should.be.equal(l.s == r.s ? 1 : 0);
         });
       });
