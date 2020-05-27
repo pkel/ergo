@@ -5,7 +5,7 @@
   "main": "lib/index.js",
   "scripts": {
     "wasm": "cd wasm && for f in *.wat ; do wat2wasm $f ; done",
-    "test": "npm run wasm && mocha",
+    "test": "npm run wasm && mocha -C",
     "test:cov": "nyc npm run test"
   },
   "repository": {
