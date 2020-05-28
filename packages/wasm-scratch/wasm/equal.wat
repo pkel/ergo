@@ -1,8 +1,59 @@
 (module
+  ;; The contract module imports linear memory from Javascript
   (import "memory" "object" (memory 1))
 
-  (type $eq (func (param i32) (param i32) (result i32)))
+  ;; Allocation
+  ;; A global variable serves as allocation pointer.
+  ;; Both sides increment it during allocation.
+  (global $alloc (import "memory" "alloc_p") (mut i32))
 
+  ;; allocate one word, store i32 argument, return address
+  (func $alloc_i32 (param i32) (result i32)
+        global.get $alloc ;; return
+        global.get $alloc ;; store
+        global.get $alloc ;; allocation
+        i32.const 4
+        i32.add
+        global.set $alloc ;; end allocation
+        get_local 0
+        i32.store ;; end store
+        )
+
+  ;; clause-like wrapper around $equal function.
+  ;; argument: pointer to a pair
+  ;; result: pointer to a boolean
+  (func (export "equal") (param i32) (result i32)
+        ;; check argument is pair
+        local.get 0
+        i32.load
+        i32.const 7
+        i32.eq
+        if (result i32)
+          ;; argument is pair, compare the values
+          local.get 0
+          i32.const 4
+          i32.add
+          i32.load
+          local.get 0
+          i32.const 8
+          i32.add
+          i32.load
+          call $equal
+        else
+          ;; argument is no pair, return false
+          i32.const 0
+        end
+        ;; turn i32 0/1 on stack into boolean false
+        ;; false has tag 1
+        ;; true has tag 2
+        i32.const 1
+        i32.add
+        call $alloc_i32
+        )
+
+  ;; Recursive equality.
+  ;; arguments: two pointers
+  ;; result: i32 0/1 interpreted as boolean
   (func $equal (param $a i32) (param $b i32) (result i32)
         local.get $a
         local.get $b
@@ -21,12 +72,11 @@
           get_local $a
           i32.load
           ;; jump via table
-          (call_indirect (type $eq))
+          (call_indirect (param i32) (param i32) (result i32))
           return
         end ;; tags not equal
         i32.const 0
         )
-  (export "equal" (func $equal))
 
   (table 32 funcref)
   (elem (i32.const 0)

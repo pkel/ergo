@@ -24,44 +24,43 @@ const memory = new WebAssembly.Memory({initial: 1});
 const alloc_p = new WebAssembly.Global({value: "i32", mutable: true}, 0);
 const export_ = { memory: { object: memory, alloc_p: alloc_p}};
 
-const call = function(instance, fnName) {
-  const args = [];
-  for (var i = 2; i < arguments.length; i += 1) {
-    args[i-2] = encoding.write(memory, alloc_p, arguments[i]);
-  }
-  const res_p = instance.exports[fnName].apply(undefined, args);
-  // The current equality does return an int32, not a pointer to a boolean.
-  // return encoding.read(memory, res_p);
-  return res_p;
+const call = function(instance, fnName, arg) {
+  const arg_p = encoding.write(memory, alloc_p, arg);
+  const res_p = instance.exports[fnName](arg_p);
+  return encoding.read(memory, res_p);
 }
 
-// main function
-const f = async function (){
-  const contract = await fs.readFile("wasm/equal.wasm")
-    .then(buf => WebAssembly.compile(buf));
-  const instance = await WebAssembly.instantiate(contract, export_);
+const main = async function() {
+  const instance = await fs.readFile("wasm/equal.wasm")
+    .then(buf => WebAssembly.compile(buf))
+    .then(mod => WebAssembly.instantiate(mod, export_));
+
+  const test = function(a, b, eq) {
+    call(instance, "equal", v.pair(a,b)).toString()
+      .should.be.equal((eq ? v.true : v.false).toString());
+  }
 
   describe('Equality', function() {
     it('unit = unit', function() {
-      call(instance, "equal", v.unit, v.unit).should.be.equal(1);
+      test(v.unit, v.unit, true)
     });
 
     it('false != true', function() {
-      call(instance, "equal", v.false, v.true).should.be.equal(0);
+      test(v.false, v.true, false);
     });
 
     it('NaN != NaN', function() {
-      call(instance, "equal", v.float32(NaN), v.float32(NaN)).should.be.equal(0);
+      test(v.float32(NaN), v.float32(NaN), false);
     });
 
     it('many other combinations', function() {
       values.forEach(a => {
         values.forEach(b => {
-          let str_eq = a.toString() === b.toString() ? 1 : 0;
-          call(instance, "equal", a, b).should.be.equal(str_eq);
-        })})
+          test(a, b, a.toString() === b.toString());
+        });
+      });
     });
   });
 };
 
-f();
+main();
