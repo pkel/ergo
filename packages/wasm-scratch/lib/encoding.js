@@ -8,7 +8,7 @@ class Allocator {
   unit() {
     const p = this.alloc_p.value;
     const v = new DataView(this.memory.buffer);
-    v.setInt32(p, 0, true);
+    v.setUint32(p, 0, true);
     this.alloc_p.value += 4;
     return p;
   }
@@ -17,7 +17,7 @@ class Allocator {
   false() {
     const p = this.alloc_p.value;
     const v = new DataView(this.memory.buffer);
-    v.setInt32(p, 1, true);
+    v.setUint32(p, 1, true);
     this.alloc_p.value += 4;
     return p;
   }
@@ -26,7 +26,7 @@ class Allocator {
   true() {
     const p = this.alloc_p.value;
     const v = new DataView(this.memory.buffer);
-    v.setInt32(p, 2, true);
+    v.setUint32(p, 2, true);
     this.alloc_p.value += 4;
     return p;
   }
@@ -138,7 +138,7 @@ function read(memory, address) {
         const b = new Uint8Array(memory.buffer, p + 8, n);
         return value.string(new TextDecoder('utf8').decode(b));
       default:
-        throw `unknown tag ${view.getInt32(p)} at address ${p}`
+        throw `unknown tag ${view.getUint32(p)} at address ${p}`
     }
   }
   return rec(address);
