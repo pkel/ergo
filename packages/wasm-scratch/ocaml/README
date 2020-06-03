@@ -1,0 +1,1 @@
+I did this on OCaml 4.07.1. You need `opam install wasm.1.0.1`.

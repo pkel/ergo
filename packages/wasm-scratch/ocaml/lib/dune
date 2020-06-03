@@ -1,0 +1,4 @@
+(library
+  (name ergo_wasm)
+  (libraries wasm)
+  )

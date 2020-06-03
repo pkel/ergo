@@ -1,0 +1,4 @@
+(executable
+ (public_name ergo_wasm)
+ (name main)
+ (libraries ergo_wasm))
