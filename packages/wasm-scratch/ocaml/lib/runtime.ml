@@ -4,21 +4,28 @@ open Wasm.Ast
 open Wasm.Source
 
 class module_ = object(self)
-  val mutable types : type_ list = []
+  val mutable types : (int * type_) list = []
   val mutable funcs : func list = []
   val mutable tab : table_segment list = []
   val mutable tab_size : int = 0
 
-  method type_ ( x : func_type ) : var =
-    let i = List.length types in
-    let () = types <- (x @@ no_region) :: types in
+  method func_type ~param ~result : var =
+    let el = (FuncType (param, result) @@ no_region) in
+    let i =
+      match List.find_opt (fun (_, el') -> el = el') types with
+      | Some (id, _) -> id
+      | None ->
+        let id = List.length types in
+        let () = types <- (id, el) :: types in
+        id
+    in
     Int32.of_int i @@ no_region
 
-  method func ?(params=[]) ?(return=[]) ?(locals=[]) body : var =
+  method func ?(param=[]) ?(result=[]) ?(local=[]) body : var =
     let i = List.length funcs
     and f =
-      { ftype = self#type_ (FuncType (params, return))
-      ; locals
+      { ftype = self#func_type ~param ~result
+      ; locals = local
       ; body = List.map (fun x -> x @@ no_region) body
       } @@ no_region
     in
@@ -27,20 +34,22 @@ class module_ = object(self)
 
   method return =
     let funcs = List.rev funcs
-    and types = List.rev types
+    and types = List.rev_map snd types
     and tables, elems =
       if tab_size <= 0 then [], [] else
         let def =
           { ttype = TableType ( { min= Int32.zero
                                 ; max=Some (Int32.of_int (tab_size - 1))
                                 }
-                              , AnyFuncType
+                              , FuncRefType
                               )
           }
         and entries = List.rev tab
         in
         [def @@ no_region], entries
-    in { empty_module with funcs; types; tables; elems} @@ no_region
+    and memories =
+      [{mtype = MemoryType { min= Int32.one; max = None}} @@ no_region]
+    in { empty_module with funcs; types; tables; elems; memories} @@ no_region
 
   method tabulate a =
     let segment =
@@ -55,28 +64,119 @@ class module_ = object(self)
     tab <- segment :: tab
 end
 
-let var i : var = Int32.of_int i @@ no_region
+let m = new module_
 
-let module_ =
-  let m = new module_ in
-  let _id0 =
-    m#func [ Nop ]
-  in
-  let _id1 =
-    let a = var 0 in
-    m#func ~params:[I32Type] ~return:[I32Type]
-    [ GetLocal a
-    ; Call _id0
+let phrase x = x @@ no_region
+let var i : var = Int32.of_int i @@ no_region
+let i32_const i : instr' = Const (I32 (Int32.of_int i) @@ no_region)
+
+let if_ ?(param=[]) ?(result=[]) then_ else_ : instr' =
+  let t = m#func_type ~param ~result in
+  If (VarBlockType t, List.map phrase then_, List.map phrase else_)
+
+let load ?(offset=0) ty : instr' =
+    Load ({ty; align= 2; sz=None; offset= Int32.of_int offset})
+
+(* compare two unsigned i32 in memory *)
+let cmp_i32u =
+  m#func ~param:[I32Type; I32Type] ~result:[I32Type]
+    [ LocalGet (var 0)
+    ; load I32Type
+    ; LocalGet (var 1)
+    ; load I32Type
+    ; Compare (I32 I32Op.LtU)
+    ; if_ ~result:[I32Type] [i32_const (-1)]
+        [ LocalGet (var 0)
+        ; load I32Type
+        ; LocalGet (var 1)
+        ; load I32Type
+        ; Compare (I32 I32Op.GtU)
+        ]
     ]
-  in
-  let _eq_i32 =
-    let a, b = var 0, var 1 in
-    m#func ~params:[I32Type; I32Type] ~return:[I32Type]
-    [ GetLocal a
-    ; GetLocal b
-    ; Call _id1
+
+(* compare two values in memory *)
+let cmp =
+  let ty = m#func_type ~param:[I32Type; I32Type] ~result:[I32Type] in
+  m#func ~param:[I32Type; I32Type] ~local:[I32Type] ~result:[I32Type]
+    [ LocalGet (var 0)
+    ; LocalGet (var 1)
+    ; Call cmp_i32u
+    ; LocalTee (var 2) (* store tag comparison result into local variable *)
+    ; i32_const 0
     ; Compare (I32 I32Op.Eq)
-    ] in
-  m#tabulate [|_id1; _eq_i32|];
-  m#tabulate [|_id0; _eq_i32|];
-  m#return
+    ; if_ ~result:[I32Type]
+        [ LocalGet (var 0)
+        ; load ~offset:4 I32Type
+        ; LocalGet (var 1)
+        ; load ~offset:4 I32Type
+        ; LocalGet (var 0)
+        ; load I32Type
+        ; CallIndirect ty
+        ]
+        [ LocalGet (var 2) ]
+    ]
+
+(* tag || nothing : tag was compared before, thus values are equal. *)
+let cmp_unit =
+  m#func ~param:[I32Type; I32Type] ~result:[I32Type]
+    [ i32_const 0 ]
+
+(* tag || int : load integers from memory, compare *)
+let cmp_i32s =
+  m#func ~param:[I32Type; I32Type] ~result:[I32Type]
+    [ LocalGet (var 0)
+    ; load I32Type
+    ; LocalGet (var 1)
+    ; load I32Type
+    ; Compare (I32 I32Op.LtS)
+    ; if_ ~result:[I32Type] [i32_const (-1)]
+        [ LocalGet (var 0)
+        ; load I32Type
+        ; LocalGet (var 1)
+        ; load I32Type
+        ; Compare (I32 I32Op.GtS)
+        ]
+    ]
+
+(* tag || float : load floats from memory, compare *)
+let cmp_f32 =
+  m#func ~param:[I32Type; I32Type] ~result:[I32Type]
+    [ LocalGet (var 0)
+    ; load F32Type
+    ; LocalGet (var 1)
+    ; load F32Type
+    ; Compare (F32 F32Op.Lt)
+    ; if_ ~result:[I32Type] [i32_const (-1)]
+        [ LocalGet (var 0)
+        ; load F32Type
+        ; LocalGet (var 1)
+        ; load F32Type
+        ; Compare (F32 F32Op.Gt)
+        ]
+    ]
+
+(* tag || pointer : recurse on pointer *)
+let cmp_rec1 =
+  m#func ~param:[I32Type; I32Type] ~result:[I32Type]
+    [ LocalGet (var 0)
+    ; load I32Type
+    ; LocalGet (var 1)
+    ; load I32Type
+    ; Call cmp
+    ]
+
+(* TODO: Add this to offset in cmp CallIndirect *)
+let _cmp_offset =
+  m#tabulate
+    [| cmp_unit (* 0 unit *)
+     ; cmp_unit (* 1 false *)
+     ; cmp_unit (* 2 true *)
+     ; cmp_i32s (* 3 int *)
+     ; cmp_f32  (* 4 float *)
+     ; cmp_rec1 (* 5 left *)
+     ; cmp_rec1 (* 6 right *)
+     ; cmp_unit (* 7 TODO: pair *)
+     ; cmp_unit (* 8 TODO: string *)
+    |]
+
+let module_ = m#return
