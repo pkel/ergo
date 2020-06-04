@@ -40,6 +40,8 @@
         (i32.load offset=4)
         (local.get 0)
         (i32.load)
+        (i32.const 0)
+        (i32.add)
         (call_indirect (type 1))
       )
       (else (local.get 2))

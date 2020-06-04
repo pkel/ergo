@@ -3,6 +3,8 @@ open Wasm.Values
 open Wasm.Ast
 open Wasm.Source
 
+type table_alloc = TabSegment of {offset: int; size:int}
+
 class module_ = object(self)
   val mutable types : (int * type_) list = []
   val mutable funcs : func list = []
@@ -51,16 +53,21 @@ class module_ = object(self)
       [{mtype = MemoryType { min= Int32.one; max = None}} @@ no_region]
     in { empty_module with funcs; types; tables; elems; memories} @@ no_region
 
-  method tabulate a =
+  method table_alloc size =
+    let offset = tab_size in
+    tab_size <- tab_size + size;
+    TabSegment {offset; size}
+
+  method elems (TabSegment {offset; size}) l =
+    if List.length l <> size then failwith "table segment size mismatch";
     let segment =
       { index = Int32.zero @@ no_region (* there is only one table *)
-      ; offset = [ Const (I32 (Int32.of_int tab_size) @@ no_region)
+      ; offset = [ Const (I32 (Int32.of_int offset) @@ no_region)
                    @@ no_region
                  ] @@ no_region
-      ; init = Array.to_list a
+      ; init = l
       } @@ no_region
     in
-    tab_size <- tab_size + Array.length a;
     tab <- segment :: tab
 end
 
@@ -69,6 +76,7 @@ let m = new module_
 let phrase x = x @@ no_region
 let var i : var = Int32.of_int i @@ no_region
 let i32_const i : instr' = Const (I32 (Int32.of_int i) @@ no_region)
+let tab_offset (TabSegment {offset; _}) = i32_const offset
 
 let if_ ?(param=[]) ?(result=[]) then_ else_ : instr' =
   let t = m#func_type ~param ~result in
@@ -94,6 +102,9 @@ let cmp_i32u =
         ]
     ]
 
+(* compare table *)
+let cmp_tab = m#table_alloc 9
+
 (* compare two values in memory *)
 let cmp =
   let ty = m#func_type ~param:[I32Type; I32Type] ~result:[I32Type] in
@@ -111,6 +122,8 @@ let cmp =
         ; load ~offset:4 I32Type
         ; LocalGet (var 0)
         ; load I32Type
+        ; tab_offset cmp_tab
+        ; Binary (I32 I32Op.Add)
         ; CallIndirect ty
         ]
         [ LocalGet (var 2) ]
@@ -165,18 +178,17 @@ let cmp_rec1 =
     ; Call cmp
     ]
 
-(* TODO: Add this to offset in cmp CallIndirect *)
-let _cmp_offset =
-  m#tabulate
-    [| cmp_unit (* 0 unit *)
-     ; cmp_unit (* 1 false *)
-     ; cmp_unit (* 2 true *)
-     ; cmp_i32s (* 3 int *)
-     ; cmp_f32  (* 4 float *)
-     ; cmp_rec1 (* 5 left *)
-     ; cmp_rec1 (* 6 right *)
-     ; cmp_unit (* 7 TODO: pair *)
-     ; cmp_unit (* 8 TODO: string *)
-    |]
+let () =
+  m#elems cmp_tab
+    [ cmp_unit (* 0 unit *)
+    ; cmp_unit (* 1 false *)
+    ; cmp_unit (* 2 true *)
+    ; cmp_i32s (* 3 int *)
+    ; cmp_f32  (* 4 float *)
+    ; cmp_rec1 (* 5 left *)
+    ; cmp_rec1 (* 6 right *)
+    ; cmp_unit (* 7 TODO: pair *)
+    ; cmp_unit (* 8 TODO: string *)
+    ]
 
 let module_ = m#return
