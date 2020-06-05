@@ -1,7 +1,8 @@
-open Wasm.Types
-open Wasm.Values
-open Wasm.Ast
-open Wasm.Source
+open Wasm
+open Types
+open Values
+open Ast
+open Source
 
 type table_alloc = TabSegment of {offset: int; size:int}
 
@@ -10,6 +11,7 @@ class module_ = object(self)
   val mutable funcs : func list = []
   val mutable tab : table_segment list = []
   val mutable tab_size : int = 0
+  val mutable exports : export list = []
 
   method func_type ~param ~result : var =
     let el = (FuncType (param, result) @@ no_region) in
@@ -37,11 +39,12 @@ class module_ = object(self)
   method return =
     let funcs = List.rev funcs
     and types = List.rev_map snd types
+    and exports = List.rev exports
     and tables, elems =
       if tab_size <= 0 then [], [] else
         let def =
-          { ttype = TableType ( { min= Int32.zero
-                                ; max=Some (Int32.of_int (tab_size - 1))
+          { ttype = TableType ( { min= Int32.of_int tab_size
+                                ; max= None
                                 }
                               , FuncRefType
                               )
@@ -49,9 +52,12 @@ class module_ = object(self)
         and entries = List.rev tab
         in
         [def @@ no_region], entries
-    and memories =
-      [{mtype = MemoryType { min= Int32.one; max = None}} @@ no_region]
-    in { empty_module with funcs; types; tables; elems; memories} @@ no_region
+    and imports =
+      [ { module_name= Utf8.decode "memory"
+        ; item_name= Utf8.decode "object"
+        ; idesc= MemoryImport (MemoryType {min= Int32.one; max = None}) @@ no_region
+        } @@ no_region ]
+    in { empty_module with funcs; types; tables; elems; exports; imports} @@ no_region
 
   method table_alloc size =
     let offset = tab_size in
@@ -69,6 +75,14 @@ class module_ = object(self)
       } @@ no_region
     in
     tab <- segment :: tab
+
+  method export name f =
+    let export =
+      { name = Utf8.decode name
+      ; edesc = (FuncExport f @@ no_region)
+      } @@ no_region
+    in
+    exports <- export :: exports
 end
 
 let m = new module_
@@ -125,26 +139,29 @@ let cmp_tab = m#table_alloc 9
 
 (* compare two values in memory *)
 let cmp =
+  let a, b, res = var 0, var 1, var 2 in
   let ty = m#func_type ~param:[I32Type; I32Type] ~result:[I32Type] in
   m#func ~param:[I32Type; I32Type] ~local:[I32Type] ~result:[I32Type]
-    [ LocalGet (var 0)
-    ; LocalGet (var 1)
+    [ LocalGet a
+    ; LocalGet b
     ; Call cmp_i32u
-    ; LocalTee (var 2) (* store tag comparison result into local variable *)
+    ; LocalTee res (* store tag comparison result into local variable *)
     ; i32_const 0
     ; Compare (I32 I32Op.Eq)
     ; if_ ~result:[I32Type]
-        [ LocalGet (var 0)
-        ; load ~offset:4 I32Type
-        ; LocalGet (var 1)
-        ; load ~offset:4 I32Type
-        ; LocalGet (var 0)
+        [ LocalGet a
+        ; i32_const 4
+        ; Binary (I32 I32Op.Add)
+        ; LocalGet b
+        ; i32_const 4
+        ; Binary (I32 I32Op.Add)
+        ; LocalGet a
         ; load I32Type
         ; tab_offset cmp_tab
         ; Binary (I32 I32Op.Add)
         ; CallIndirect ty
         ]
-        [ LocalGet (var 2) ]
+        [ LocalGet res ]
     ]
 
 (* tag || nothing : tag was compared before, thus values are equal. *)
@@ -293,5 +310,7 @@ let () =
     ; cmp_rec2   (* 7 pair *)
     ; cmp_string (* 8 string *)
     ]
+
+let () = m#export "compare" cmp
 
 let module_ = m#return
