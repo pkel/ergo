@@ -78,12 +78,30 @@ let var i : var = Int32.of_int i @@ no_region
 let i32_const i : instr' = Const (I32 (Int32.of_int i) @@ no_region)
 let tab_offset (TabSegment {offset; _}) = i32_const offset
 
+let block ?(param=[]) ?(result=[]) body : instr' =
+  let t = m#func_type ~param ~result in
+  Block (VarBlockType t, List.map phrase body)
+
+let loop ?(param=[]) ?(result=[]) body : instr' =
+  let t = m#func_type ~param ~result in
+  Loop (VarBlockType t, List.map phrase body)
+
 let if_ ?(param=[]) ?(result=[]) then_ else_ : instr' =
   let t = m#func_type ~param ~result in
   If (VarBlockType t, List.map phrase then_, List.map phrase else_)
 
-let load ?(offset=0) ty : instr' =
-    Load ({ty; align= 2; sz=None; offset= Int32.of_int offset})
+let load ?sz ?align ?(offset=0) ty : instr' =
+  (* TODO: understand what align is doing. The below seems to be the defaults
+   * in wasm text format. *)
+  let align = match align with
+    | Some x -> x
+    | None -> match sz with
+      | None -> 2
+      | Some (Pack8, _) -> 0
+      | Some (Pack16, _) -> 1
+      | Some (Pack32, _) -> 2
+  in
+  Load ({ty; align; sz; offset= Int32.of_int offset})
 
 (* compare two unsigned i32 in memory *)
 let cmp_i32u =
@@ -178,17 +196,102 @@ let cmp_rec1 =
     ; Call cmp
     ]
 
+(* tag || pointer pointer : recurse on pointers *)
+let cmp_rec2 =
+  m#func ~param:[I32Type; I32Type] ~result:[I32Type] ~local:[I32Type]
+    [ LocalGet (var 0)
+    ; load I32Type
+    ; LocalGet (var 1)
+    ; load I32Type
+    ; Call cmp
+    ; LocalTee (var 2)
+    ; i32_const 0
+    ; Compare (I32 I32Op.Eq)
+    ; if_ ~result:[I32Type]
+        [ LocalGet (var 0)
+        ; load ~offset:4 I32Type
+        ; LocalGet (var 1)
+        ; load ~offset:4 I32Type
+        ; Call cmp
+        ]
+        [ LocalGet (var 2) ]
+    ]
+
+(* tag || i32 byte byte .. : loop over bytes *)
+let cmp_string =
+  let a, b, result, end_ = var 0, var 1, var 2, var 3 in
+  m#func ~param:[I32Type; I32Type] ~result:[I32Type] ~local:[I32Type; I32Type]
+    [ LocalGet a
+    ; LocalGet b
+    ; Call cmp_i32u
+    ; LocalTee result
+    ; i32_const 0
+    ; Compare (I32 I32Op.Eq)
+    ; if_ ~result:[I32Type]
+        (* lengths equal *)
+        [ (* put length on the stack *)
+          LocalGet a
+        ; load I32Type
+        ; (* initiate moving pointer in a *)
+          LocalGet a
+        ; i32_const 3
+        ; Binary (I32 I32Op.Add)
+        ; LocalTee a
+        ; (* set end address: start + length; length is on the stack *)
+          Binary (I32 I32Op.Add)
+        ; LocalSet end_
+        ; (* initiate moving pointer in b *)
+          LocalGet b
+        ; i32_const 3
+        ; Binary (I32 I32Op.Add)
+        ; LocalSet b
+        ; loop ~result:[I32Type]
+          [ (* check end of string *)
+            LocalGet a
+          ; LocalGet end_
+          ; Compare (I32 I32Op.GeU)
+          ; if_ ~result:[I32Type]
+              (* end of string reached. Strings are equal. *)
+              [ i32_const 0 ]
+              (* compare next character *)
+              [ (* load ++a *)
+                LocalGet a
+              ; i32_const 1
+              ; Binary (I32 I32Op.Add)
+              ; LocalTee a
+              ; load ~sz:(Pack8, ZX) I32Type
+              ; (* load ++b *)
+                LocalGet b
+              ; i32_const 1
+              ; Binary (I32 I32Op.Add)
+              ; LocalTee b
+              ; load ~sz:(Pack8, ZX) I32Type
+              ; Call cmp_i32u
+              ; LocalTee result
+              ; i32_const 0
+              ; Compare (I32 I32Op.Eq)
+              ; (* if equal: leave if-block, jump to beginning of loop-block *)
+                BrIf (var 1)
+              ; (* if not equal: leave comparison result on stack, exit loop *)
+                LocalGet result
+              ]
+          ]
+        ]
+        (* unequal lengths *)
+        [ LocalGet result ]
+    ]
+
 let () =
   m#elems cmp_tab
-    [ cmp_unit (* 0 unit *)
-    ; cmp_unit (* 1 false *)
-    ; cmp_unit (* 2 true *)
-    ; cmp_i32s (* 3 int *)
-    ; cmp_f32  (* 4 float *)
-    ; cmp_rec1 (* 5 left *)
-    ; cmp_rec1 (* 6 right *)
-    ; cmp_unit (* 7 TODO: pair *)
-    ; cmp_unit (* 8 TODO: string *)
+    [ cmp_unit   (* 0 unit *)
+    ; cmp_unit   (* 1 false *)
+    ; cmp_unit   (* 2 true *)
+    ; cmp_i32s   (* 3 int *)
+    ; cmp_f32    (* 4 float *)
+    ; cmp_rec1   (* 5 left *)
+    ; cmp_rec1   (* 6 right *)
+    ; cmp_rec2   (* 7 pair *)
+    ; cmp_string (* 8 string *)
     ]
 
 let module_ = m#return
