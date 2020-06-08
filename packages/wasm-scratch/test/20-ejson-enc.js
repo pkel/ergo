@@ -3,11 +3,13 @@ expect = require('chai').expect;
 const encoding = require('../lib/ejson-enc');
 
 const values = [
+  null,
   true,
   false,
   0,
   3.14,
   Infinity,
+  NaN,
   'a string',
   '🌹​🎉', // zero width space lurking
   [1, 2, 3],

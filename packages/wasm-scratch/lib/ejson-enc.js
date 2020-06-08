@@ -37,7 +37,7 @@ class Allocator {
     const v = new DataView(this.memory.buffer);
     v.setUint32(p, 3, true);
     v.setFloat64(p + 4, x, true);
-    this.alloc_p.value += 12;
+    this.alloc_p.value += 4 + 8;
     return p;
   }
 
@@ -49,7 +49,7 @@ class Allocator {
     const v = new DataView(this.memory.buffer);
     v.setUint32(p, 4, true);
     v.setUint32(p + 4, n, true);
-    for (var i = 0; i < n; i++) {
+    for (let i = 0; i < n; i++) {
       v.setUint8(p + 8 + i, b[i], true)
     }
     this.alloc_p.value += n + 8;

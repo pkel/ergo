@@ -10,6 +10,8 @@ const values = [
   v.float32(1.25),
   v.true,
   v.false,
+  v.left(v.unit),
+  v.left(v.false),
   v.left(v.int32(-1)),
   v.right(v.float32(1e18)),
   v.pair(v.unit, v.unit),
