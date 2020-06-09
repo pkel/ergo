@@ -16,7 +16,12 @@ const values = [
   "abC",
   {left: null},
   {left: 0},
-  {right: 1}
+  {right: 1},
+  [],
+  [null],
+  [0],
+  [0, 0],
+  [0, 1]
 ];
 
 const memory = new WebAssembly.Memory({initial: 1});
@@ -75,6 +80,14 @@ const main = async function() {
 
     it('"a" != "bc"', function() {
       test('a','bc');
+    });
+
+    it('[] != [null]', function() {
+      test([],[null]);
+    });
+
+    it('[false] != [null]', function() {
+      test([false],[null]);
     });
 
     // it('NaN = NaN', function() {
