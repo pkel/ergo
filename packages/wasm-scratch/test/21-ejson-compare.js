@@ -4,6 +4,19 @@ const fs = require('fs').promises;
 const encoding = require('../lib/ejson-enc.js');
 
 const values = [
+  null,
+  false,
+  true,
+  42,
+  Infinity,
+  3.14,
+  "",
+  "a",
+  "abc",
+  "abC",
+  {left: null},
+  {left: 0},
+  {right: 1}
 ];
 
 const memory = new WebAssembly.Memory({initial: 1});

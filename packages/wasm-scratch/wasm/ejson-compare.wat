@@ -45,13 +45,13 @@
   )
   (func $cmp_ejson
     (type $compare)
-    (local $res i32)
+    (local i32) ;; res
     ;; compare tags
     (local.get 0)
     (local.get 1)
     (call $cmp_i32u_pointer)
     ;; store result
-    (local.tee $res)
+    (local.tee 2) ;; res
     ;; cmp(tag0, tag1) = 0
     (i32.const 0)
     (i32.eq)
@@ -71,7 +71,7 @@
         (i32.load)
         (call_indirect (type $compare))
       )
-      (else (local.get $res))
+      (else (local.get 2)) ;; res
     )
   )
   (func $cmp_nullary (type $compare) (i32.const 0))
@@ -87,12 +87,12 @@
 
   (func $cmp_string
     (type $compare)
-    (local $res i32)
-    (local $end i32)
+    (local i32) ;; res
+    (local i32) ;; end
     (local.get 0)
     (local.get 1)
     (call $cmp_i32u_pointer)
-    (local.tee $res)
+    (local.tee 2) ;; res
     (i32.const 0)
     (i32.eq)
     (if
@@ -105,7 +105,7 @@
         (i32.add)
         (local.tee 0)
         (i32.add)
-        (local.set $end)
+        (local.set 3) ;; end
         (local.get 1)
         (i32.const 3)
         (i32.add)
@@ -113,7 +113,7 @@
         (loop
           (result i32)
           (local.get 0)
-          (local.get $end)
+          (local.get 3) ;; end
           (i32.ge_u)
           (if
             (result i32)
@@ -130,16 +130,16 @@
               (local.tee 1)
               (i32.load8_u)
               (call $cmp_i32u_stack)
-              (local.tee $res)
+              (local.tee 2) ;; res
               (i32.const 0)
               (i32.eq)
               (br_if 1)
-              (local.get $res)
+              (local.get 2) ;; res
             )
           )
         )
       )
-      (else (local.get $res))
+      (else (local.get 2)) ;; res
     )
   )
 
