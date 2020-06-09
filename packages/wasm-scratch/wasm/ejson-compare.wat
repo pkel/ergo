@@ -202,6 +202,62 @@
       )
     )
 
+  ;; we assume that object keys are sorted and compare it like it would
+  ;; be an array of twice the length
+  (func $cmp_object
+    (type $compare)
+    (local i32) ;; res
+    (local i32) ;; end
+    (local.get 0)
+    (local.get 1)
+    (call $cmp_i32u_pointer)
+    (local.tee 2) ;; res
+    (i32.const 0)
+    (i32.eq)
+    (if
+      (result i32)
+      (then
+        (local.get 0)
+        (i32.load)
+        (i32.const 8)
+        (i32.mul)
+        (local.get 0)
+        (i32.add)
+        (local.set 3) ;; end
+        (loop
+          (result i32)
+          (local.get 0)
+          (local.get 3) ;; end
+          (i32.ge_u)
+          (if
+            (result i32)
+            (then (i32.const 0))
+            (else
+              (local.get 0)
+              (i32.const 4)
+              (i32.add)
+              (local.tee 0)
+              (i32.load)
+              (local.get 1)
+              (i32.const 4)
+              (i32.add)
+              (local.tee 1)
+              (i32.load)
+              (call $cmp_ejson)
+              (local.tee 2) ;; res
+              (i32.const 0)
+              (i32.eq)
+              (br_if 1)
+              (local.get 2) ;; res
+              )
+            )
+          )
+        )
+      (else (local.get 2)) ;; res
+      )
+    )
+
+
   (export "compare" (func $cmp_ejson))
 
   (elem $tab (offset (i32.const 0))
@@ -211,7 +267,7 @@
         $cmp_f64_pointer ;; number
         $cmp_string      ;; string
         $cmp_array       ;; TODO: array
-        $cmp_nullary     ;; TODO: object
+        $cmp_object      ;; TODO: object
         $cmp_unary       ;; left
         $cmp_unary       ;; right
         )

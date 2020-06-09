@@ -3,6 +3,7 @@ require('chai').should();
 const fs = require('fs').promises;
 const encoding = require('../lib/ejson-enc.js');
 
+// all combinations of these values will be compared
 const values = [
   null,
   false,
@@ -15,13 +16,20 @@ const values = [
   "abc",
   "abC",
   {left: null},
+  {_left: null},
+  {left: null, right: null},
   {left: 0},
   {right: 1},
   [],
   [null],
   [0],
   [0, 0],
-  [0, 1]
+  [0, 1],
+  {},
+  {a: null},
+  {b: null},
+  {a: 0},
+  {a: null, b:null},
 ];
 
 const memory = new WebAssembly.Memory({initial: 1});
@@ -88,6 +96,10 @@ const main = async function() {
 
     it('[false] != [null]', function() {
       test([false],[null]);
+    });
+
+    it('{} != {a: null}', function() {
+      test({}, {a: null});
     });
 
     // it('NaN = NaN', function() {
