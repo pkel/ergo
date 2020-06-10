@@ -1,3 +1,5 @@
+'use strict';
+
 require('chai').should();
 
 const fs = require('fs').promises;
@@ -12,10 +14,10 @@ const values = [
   42,
   Infinity,
   3.14,
-  "",
-  "a",
-  "abc",
-  "abC",
+  '',
+  'a',
+  'abc',
+  'abC',
   {left: null},
   {_left: null},
   {left: null, right: null},
@@ -37,7 +39,7 @@ const values = [
 ];
 
 const memory = new WebAssembly.Memory({initial: 1});
-const alloc_p = new WebAssembly.Global({value: "i32", mutable: true}, 0);
+const alloc_p = new WebAssembly.Global({value: 'i32', mutable: true}, 0);
 const export_ = { memory: { object: memory, alloc_p: alloc_p}};
 
 const equal = function(instance, a, b) {
@@ -45,7 +47,7 @@ const equal = function(instance, a, b) {
   const b_p = encoding.write(memory, alloc_p, b);
   const res = instance.exports.compare(a_p, b_p);
   return (res === 0 ? true : false);
-}
+};
 
 function toString(a) {
   try {
@@ -56,23 +58,23 @@ function toString(a) {
 }
 
 const main = async function() {
-  const instance = await fs.readFile("wasm/ejson-compare.wasm")
+  const instance = await fs.readFile('wasm/ejson-compare.wasm')
     .then(buf => WebAssembly.compile(buf))
     .then(mod => WebAssembly.instantiate(mod, export_));
 
   const test = function(a, b) {
     equal(instance, a, b)
       .should.be.equal(_.isEqual(a,b));
-  }
+  };
 
   describe('Wasm Comparison', function () {
     describe('manually chosen combinations', function() {
       it('null = null', function() {
-        test(null, null)
+        test(null, null);
       });
 
       it('false != true', function() {
-        test(false, true)
+        test(false, true);
       });
 
       it('1 = 1', function() {

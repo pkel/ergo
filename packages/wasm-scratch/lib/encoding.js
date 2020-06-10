@@ -1,3 +1,5 @@
+'use strict';
+
 class Allocator {
   constructor(memory, alloc_p) {
     this.buffer = Buffer.from(memory.buffer);
@@ -101,42 +103,40 @@ function write(memory, alloc_p, x) {
   const alloc = new Allocator(memory, alloc_p);
   function recurse(x) {
     switch (typeof x) {
-      case 'boolean':
-        if (x) {
-          return alloc.true_();
+    case 'boolean':
+      if (x) {
+        return alloc.true_();
+      } else {
+        return alloc.false_();
+      }
+    case 'string':
+      return alloc.string(x);
+    case 'number':
+      return alloc.number(x);
+    case 'bigint':
+      return alloc.bigint64(x);
+    case 'object':
+      if (x === null) {
+        return alloc.null_();
+      } else if (Array.isArray(x)) {
+        return alloc.array(x.map(x => recurse(x)));
+      } else {
+        let keys = Object.getOwnPropertyNames(x).sort();
+        // TODO: Ask Jerome, whether left/right translation is correct:
+        if ( keys.length === 1 && keys[0] === 'left' ) {
+          return alloc.left(recurse(x.left));
+        } else if ( keys.length === 1 && keys[0] === 'right' ) {
+          return alloc.right(recurse(x.right));
         } else {
-          return alloc.false_();
+          return alloc.object(keys.map(k => [recurse(k), recurse(x[k])]));
         }
-        break;
-      case 'string':
-        return alloc.string(x);
-      case 'number':
-        return alloc.number(x);
-      case 'bigint':
-        return alloc.bigint64(x);
-      case 'object':
-        if (x === null) {
-          return alloc.null_();
-        } else if (Array.isArray(x)) {
-          return alloc.array(x.map(x => recurse(x)));
-        } else {
-          let keys = Object.getOwnPropertyNames(x).sort();
-          // TODO: Ask Jerome, whether left/right translation is correct:
-          if ( keys.length === 1 && keys[0] === 'left' ) {
-            return alloc.left(recurse(x.left));
-          } else if ( keys.length === 1 && keys[0] === 'right' ) {
-            return alloc.right(recurse(x.right));
-          } else {
-            return alloc.object(keys.map(k => [recurse(k), recurse(x[k])]));
-          };
-        };
-        break;
-      default:
-        throw new Error(`unknown type: ${typeof x}`);
-    };
-  };
+      }
+    default:
+      throw new Error(`unknown type: ${typeof x}`);
+    }
+  }
   return recurse(x);
-};
+}
 
 // TODO: decide between Buffer and DataView
 // We use Buffer.from(memory.buffer) for writes and new DataView(memory.buffer)
@@ -147,54 +147,54 @@ function read(memory, p) {
   const view = new DataView(memory.buffer);
   function recurse(p) {
     switch(view.getUint32(p, true)) {
-      case 0:
-        return null;
-      case 1:
-        return false;
-      case 2:
-        return true;
-      case 3: // number
-        return view.getFloat64(p + 4, true);
-      case 4: { // string
-        let n = view.getUint32(p + 4, true);
-        let b = new Uint8Array(memory.buffer, p + 8, n);
-        return (new TextDecoder('utf8').decode(b));
-      };
-      case 5: { // array
-        let n = view.getUint32(p + 4, true);
-        let array = [];
-        let pos = p + 8;
-        for (let i=0; i < n; i++) {
-          array[i] = recurse(view.getUint32(pos, true));
-          pos += 4;
-        };
-        return array;
-      };
-      case 6: { // object
-        let n = view.getUint32(p + 4, true);
-        let object = {};
-        let pos = p + 8;
-        for (let i=0; i < n; i++) {
-          let key = recurse(view.getUint32(pos, true));
-          if (typeof key !== 'string') {
-            throw new Error('invalid value');
-          };
-          object[key] = recurse(view.getUint32(pos + 4, true));
-          pos += 8;
-        };
-        return object;
-      };
-      case 7: // left
-        return {left: recurse(view.getUint32(p + 4, true))};
-      case 8: // right
-        return {right: recurse(view.getUint32(p + 4, true))};
-      case 9: // i64
-        return view.getBigInt64(p + 4, true);
-      default:
-        throw new Error('unknown tag');
-    };
-  };
+    case 0:
+      return null;
+    case 1:
+      return false;
+    case 2:
+      return true;
+    case 3: // number
+      return view.getFloat64(p + 4, true);
+    case 4: { // string
+      let n = view.getUint32(p + 4, true);
+      let b = new Uint8Array(memory.buffer, p + 8, n);
+      return (new TextDecoder('utf8').decode(b));
+    }
+    case 5: { // array
+      let n = view.getUint32(p + 4, true);
+      let array = [];
+      let pos = p + 8;
+      for (let i=0; i < n; i++) {
+        array[i] = recurse(view.getUint32(pos, true));
+        pos += 4;
+      }
+      return array;
+    }
+    case 6: { // object
+      let n = view.getUint32(p + 4, true);
+      let object = {};
+      let pos = p + 8;
+      for (let i=0; i < n; i++) {
+        let key = recurse(view.getUint32(pos, true));
+        if (typeof key !== 'string') {
+          throw new Error('invalid value');
+        }
+        object[key] = recurse(view.getUint32(pos + 4, true));
+        pos += 8;
+      }
+      return object;
+    }
+    case 7: // left
+      return {left: recurse(view.getUint32(p + 4, true))};
+    case 8: // right
+      return {right: recurse(view.getUint32(p + 4, true))};
+    case 9: // i64
+      return view.getBigInt64(p + 4, true);
+    default:
+      throw new Error('unknown tag');
+    }
+  }
   return recurse(p);
-};
+}
 
 module.exports = { write, read };

@@ -4,6 +4,7 @@
   "description": "explore ergo on wasm",
   "main": "lib/index.js",
   "scripts": {
+    "lint": "eslint .",
     "wasm": "cd wasm && for f in *.wat ; do wat2wasm $f ; done",
     "test": "npm run wasm && mocha -C",
     "test:cov": "nyc npm run test"
@@ -29,10 +30,10 @@
   "homepage": "https://github.com/accordproject/ergo#readme",
   "devDependencies": {
     "chai": "4.2.0",
-    "eslint": "6.0.1",
+    "eslint": "7.2.0",
     "lodash": "4.17.13",
     "mocha": "5.2.0",
-    "semver": "6.2.0",
-    "nyc": "13.3.0"
+    "nyc": "13.3.0",
+    "semver": "6.2.0"
   }
 }
