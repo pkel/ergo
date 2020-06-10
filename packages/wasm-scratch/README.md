@@ -2,7 +2,7 @@
 
 - Node.js version 12 or higher
 - [wabt](https://github.com/WebAssembly/wabt), especially the wat2wasm
-program
+  program
 
 # Usage
 
@@ -12,73 +12,45 @@ npm test
 
 # Memory Encoding
 
-Everything is boxed. In memory, a box is an integer (i32) tag followed
-by the content. We write `tag content`. The length of the content is
-defined by the tag.
+Everything is boxed. In memory, a box is an unsigned integer tag followed
+by the content. The following encoding is implemented in
+`lib/encoding.js` (both read and write).
 
-## Unit
+`null` has tag 0 and no content:
+`<i32u> 0`
 
-- Unit() : `0`
+`true` has tag 1 and no content:
+`<i32u> 1`
 
-## Boolean
+`false` has tag 2 and no content:
+`<i32u> 2`
 
-- False() : `1`
-- True() : `2`
+Number x has tag 3 and 8 bytes of content:
+`<i32u> 3 | <f64> x`
 
-## Numbers
+String x has tag 4 and (n + 4) bytes of content, where n denotes the
+byte-length of x:
+`<i32u> 4 | <i32u> n | <i8u> x[0] | <i8u> x[1] | ...`
 
-Let x be a 4 byte value.
-- Int32(x) : `3 x`
-- Float32(x) : `4 x`
+Array x has tag 5 and (n * 4 + 4) bytes of content, where n denotes the
+size of the array. Each element of x is pointer to an arbitrary box.
+`<i32u> 5 | <i32u> n | <addr> x[0] | <addr> x[1] | ...`
 
-## Sum
+Record x is translated to a list l of key-value pairs. The list does not
+contain duplicate keys and is *sorted* by keys. Each key is a pointer to
+a string box. Each value is a pointer to an arbitrary box. In wasm
+memory, x has tag 6 and (n * 8 + 4) bytes of content, where n is the
+length of l:
+`<i32u> 6 | <i32u> n | <addr> x[0][0] | <addr> x[0][1] | <addr> x[1][0] | <addr> x[1][1] | ...`
 
-Let x be a pointer to another box.
-- Left(x) : `5 x`
-- Right(x) : `6 x`
+Left(x) has tag 7 and 4 bytes of content. x is a pointer to an arbitrary
+box:
+`<i32u> 7 | <addr> x`
 
-## Pair
+Right(x) has tag 8 and 4 bytes of content. x is a pointer to an arbitrary
+box:
+`<i32u> 8 | <addr> x`
 
-Let x and y be pointers to other boxes.
-- Pair(x,y) : `7 x y`
-
-## String
-
-Let x be an n byte value.
-- String(x) : `8 n x`
-
-# Future Memory Encoding
-
-We plan to add types for n-tuples(arrays) and records(objects).
-
-## n-Tuple
-
-Let a, b, c, d be pointers to other boxes.
-- Tuple(a, b, c) : `9 3 a b c`
-- Tuple(a, d) : `9 2 a d`
-
-This might replace the Pair type. Should it?
-
-## Record
-
-Let v1, v2, v3 be pointers to other boxes and fa, fb, fc be pointers to
-string boxes for the strings "a", "b", and "c".
-- Record({a: v1}) : `10 1 sa v1`
-- Record({b: v1, c: v3}) : `10 2 sb v1 sc v3`
-- Record({b: v1, a: v2, c: v3}) : `10 3 sb v1 sa v2 sc v3`
-- Record({a: v2, b: v1, c: v3}) : `10 3 sa v2 sb v1 sc v3`
-
-Trouble: Should the two last examples be the same? If yes, we have two
-options.
-1. The compiler and APIs maintain a deterministic order of fields. This
-makes comparison easy on the WASM side. Creation of records is less
-easy.
-2. The WASM compare(x,y) does a lookup of x's field names in y.
-
-## Variants
-
-Let s be a pointer to a string box and v be a pointer to a value.
-- Variant(s, v) : `11 s v`
-
-This might replace the Sum type. Should it?
-
+BigInt x has tag 9 and 8 bytes of content. x is casted to the set of
+singed 64-bit integers:
+`<i32u> 9 | <i64s> x`
