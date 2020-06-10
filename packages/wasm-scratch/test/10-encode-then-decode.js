@@ -1,6 +1,6 @@
 expect = require('chai').expect;
 
-const encoding = require('../lib/ejson-enc');
+const encoding = require('../lib/encoding');
 
 const values = [
   null,
@@ -22,20 +22,22 @@ const values = [
   BigInt(Number.MAX_SAFE_INTEGER) << 5n
 ];
 
+function toString(a) {
+  try {
+    return JSON.stringify(a);
+  } catch (e) {
+    return a.toString();
+  }
+}
+
 const memory = new WebAssembly.Memory({initial: 1});
 const alloc_p = new WebAssembly.Global({value: "i32", mutable: true}, 0);
 
-describe('EJson Encoding', function () {
+describe('Wasm Encoding', function () {
   describe('write values to wasm memory, read back, compare', function () {
     for (var i=0; i < values.length; i++) {
       let a = values[i];
-      let s;
-      try {
-         s = JSON.stringify(a);
-      } catch (e) {
-         s = a.toString();
-      }
-      it(s, function () {
+      it(toString(a), function () {
         let p = encoding.write(memory, alloc_p, a);
         let b = encoding.read(memory, p);
         expect(a).to.deep.equal(b);
