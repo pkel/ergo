@@ -30,6 +30,8 @@ const values = [
   {b: null},
   {a: 0},
   {a: null, b:null},
+  0n,
+  BigInt(Number.MAX_SAFE_INTEGER) << 2n
 ];
 
 const memory = new WebAssembly.Memory({initial: 1});
@@ -100,6 +102,10 @@ const main = async function() {
 
     it('{} != {a: null}', function() {
       test({}, {a: null});
+    });
+
+    it('0n != 1n', function() {
+      test(0n, 1n);
     });
 
     // it('NaN = NaN', function() {

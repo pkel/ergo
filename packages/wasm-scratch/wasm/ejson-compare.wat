@@ -1,7 +1,7 @@
 (module
   (type $compare (func (param i32 i32) (result i32)))
   (import "memory" "object" (memory $mem 1))
-  (table $tab 9 funcref)
+  (table $tab 10 funcref)
 
   (func $cmp_i32u_stack
     (type $compare)
@@ -26,6 +26,26 @@
     (local.get 1)
     (i32.load)
     (call $cmp_i32u_stack)
+  )
+
+  (func $cmp_i64s_stack (param i64 i64) (result i32)
+    (local.get 0)
+    (local.get 1)
+    (i64.lt_s)
+    (if
+      (result i32)
+      (then (i32.const -1))
+      (else (local.get 0) (local.get 1) (i64.gt_s))
+    )
+  )
+
+  (func $cmp_i64s_pointer
+    (type $compare)
+    (local.get 0)
+    (i64.load)
+    (local.get 1)
+    (i64.load)
+    (call $cmp_i64s_stack)
   )
 
   (func $cmp_f64_stack (param f64 f64) (result i32)
@@ -257,18 +277,18 @@
       )
     )
 
-
   (export "compare" (func $cmp_ejson))
 
   (elem $tab (offset (i32.const 0))
-        $cmp_nullary     ;; null
-        $cmp_nullary     ;; false
-        $cmp_nullary     ;; true
-        $cmp_f64_pointer ;; number
-        $cmp_string      ;; string
-        $cmp_array       ;; TODO: array
-        $cmp_object      ;; TODO: object
-        $cmp_unary       ;; left
-        $cmp_unary       ;; right
+        $cmp_nullary      ;; null
+        $cmp_nullary      ;; false
+        $cmp_nullary      ;; true
+        $cmp_f64_pointer  ;; number
+        $cmp_string       ;; string
+        $cmp_array        ;; TODO: array
+        $cmp_object       ;; TODO: object
+        $cmp_unary        ;; left
+        $cmp_unary        ;; right
+        $cmp_i64s_pointer ;; bigint64
         )
 )
