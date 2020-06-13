@@ -1,0 +1,20 @@
+(module
+  (type $0 (func (result i32)))
+  (memory $0 1)
+  (global $0 (mut i32) (i32.const 44))
+  (func $0 (type 0) (i32.const 0))
+  (func $1 (type 0) (i32.const 4))
+  (func $2 (type 0) (i32.const 8))
+  (func $3 (type 0) (i32.const 12))
+  (func $4 (type 0) (i32.const 24))
+  (func $5 (type 0) (i32.const 36))
+  (export "memory" (memory 0))
+  (export "alloc_p" (global 0))
+  (data
+    0
+    (offset (i32.const 0))
+    "\00\00\00\00\01\00\00\00\02\00\00\00\03\00\00\00"
+    "\1f\85\eb\51\b8\1e\09\40\04\00\00\00\04\00\00\00"
+    "\65\72\67\6f\04\00\00\00\00\00\00\00"
+  )
+)
