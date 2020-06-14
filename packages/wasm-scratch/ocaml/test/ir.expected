@@ -1,0 +1,13 @@
+(module
+  (type $0 (func (param i32 i32) (result i32)))
+  (type $1 (func))
+  (memory $0 1)
+  (global $0 (mut i32) (i32.const 0))
+  (func $0 (type 0) (local.get 0) (local.get 1) (i32.add))
+  (func $1 (type 1) (nop))
+  (func $2 (type 1) (call 1))
+  (export "add_i32" (func 0))
+  (export "alloc_p" (global 0))
+  (start 2)
+  (data 0 (offset (i32.const 0)) "\68\65\6c\6c\6f\20\77\6f\72\6c\64")
+)
