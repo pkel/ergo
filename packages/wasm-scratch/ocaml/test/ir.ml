@@ -17,6 +17,7 @@ let m =
   ; funcs = ["add_i32", f_add_i32]
   ; globals = ["alloc_p", g_alloc_p]
   ; data = [0, "hello world"]
+  ; memory = Some "memory"
   }
 
 let () =

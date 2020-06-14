@@ -34,6 +34,7 @@ type module_ =
   { start: func option
   ; funcs: (string * func) list
   ; globals: (string * global) list
+  ; memory: string option
   ; data : (int * string) list
   }
 

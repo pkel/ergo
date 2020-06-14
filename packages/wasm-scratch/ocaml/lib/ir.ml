@@ -65,6 +65,7 @@ type module_ =
   { start: func option
   ; funcs: (string * func) list
   ; globals: (string * global) list
+  ; memory: string option
   ; data : (int * string) list
   }
 
@@ -127,6 +128,14 @@ let compile (m: module_) =
       ; edesc = GlobalExport g @@ no_region
       } @@ no_region
     ) m.globals
+  and m_exports =
+    match m.memory with
+    | None -> []
+    | Some s ->
+      [ { name = Utf8.decode s
+        ; edesc = MemoryExport (Int32.zero @@ no_region) @@ no_region
+        } @@ no_region
+      ]
   and data =
     List.map (fun (offset, init) ->
         { index = Int32.zero @@ no_region
@@ -136,7 +145,7 @@ let compile (m: module_) =
       ) m.data
   in
   { start = Option.map (compile_func ctx) m.start
-  ; exports = f_exports @ g_exports
+  ; exports = m_exports @ g_exports @ f_exports
   ; types = Array.to_list (Index.elements ctx.t)
   ; funcs = Array.to_list (Index.elements ctx.f)
   ; globals = Array.to_list (Index.elements ctx.g)
