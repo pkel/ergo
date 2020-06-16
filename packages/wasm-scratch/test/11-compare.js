@@ -18,10 +18,10 @@ const values = [
   'a',
   'abc',
   'abC',
+  {$left: null},
   {left: null},
-  {_left: null},
   {left: null, right: null},
-  {left: 0},
+  {$left: 0},
   {right: 1},
   [],
   [null],
@@ -34,8 +34,8 @@ const values = [
   {a: 0},
   {b: null, a:null},
   {a: null, b:null},
-  0n,
-  BigInt(Number.MAX_SAFE_INTEGER) << 2n
+  {$nat: 0n},
+  {$nat: BigInt(Number.MAX_SAFE_INTEGER) << 2n}
 ];
 
 const memory = new WebAssembly.Memory({initial: 1});
@@ -118,7 +118,7 @@ const main = async function() {
       });
 
       it('0n != 1n', function() {
-        test(0n, 1n);
+        test({$nat: 0n}, {$nat: 1n});
       });
 
       it('NaN = NaN', function() {

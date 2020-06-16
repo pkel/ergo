@@ -91,7 +91,7 @@ class Allocator {
   }
 
   // <i32u> 9 || <i64> x
-  bigint64(x) {
+  nat(x) {
     const p = this.alloc_p.value;
     this.buffer.writeUInt32LE(9, p);
     this.alloc_p.value = this.buffer.writeBigInt64LE(x, p + 4);
@@ -113,24 +113,24 @@ function write(memory, alloc_p, x) {
       return alloc.string(x);
     case 'number':
       return alloc.number(x);
-    case 'bigint':
-      return alloc.bigint64(x);
     case 'object':
+    {
       if (x === null) {
         return alloc.null_();
-      } else if (Array.isArray(x)) {
+      }
+      if (Array.isArray(x)) {
         return alloc.array(x.map(x => recurse(x)));
-      } else {
-        let keys = Object.getOwnPropertyNames(x).sort();
-        // TODO: Ask Jerome, whether left/right translation is correct:
-        if ( keys.length === 1 && keys[0] === 'left' ) {
-          return alloc.left(recurse(x.left));
-        } else if ( keys.length === 1 && keys[0] === 'right' ) {
-          return alloc.right(recurse(x.right));
-        } else {
-          return alloc.object(keys.map(k => [recurse(k), recurse(x[k])]));
+      }
+      let keys = Object.getOwnPropertyNames(x).sort();
+      if ( keys.length === 1 ) {
+        switch (keys[0]) {
+        case '$left' : return alloc.left(recurse(x.$left));
+        case '$right' : return alloc.right(recurse(x.$right));
+        case '$nat' : return alloc.nat(x.$nat);
         }
       }
+      return alloc.object(keys.map(k => [recurse(k), recurse(x[k])]));
+    }
     default:
       throw new Error(`unknown type: ${typeof x}`);
     }
@@ -185,11 +185,11 @@ function read(memory, p) {
       return object;
     }
     case 7: // left
-      return {left: recurse(view.getUint32(p + 4, true))};
+      return {$left: recurse(view.getUint32(p + 4, true))};
     case 8: // right
-      return {right: recurse(view.getUint32(p + 4, true))};
+      return {$right: recurse(view.getUint32(p + 4, true))};
     case 9: // i64
-      return view.getBigInt64(p + 4, true);
+      return {$nat: view.getBigInt64(p + 4, true)};
     default:
       throw new Error('unknown tag');
     }

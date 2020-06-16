@@ -16,12 +16,12 @@ const values = [
   '🌹​🎉', // zero width space lurking
   [1, 2, 3],
   {field1: 'value1'},
-  [null, {}, false, 0, [], {left: null}],
-  {left: null},
-  {right: 'string'},
+  [null, {}, false, 0, [], {$left: null}],
+  {$left: null},
+  {$right: 'string'},
   {left: 'either', key: 'value'}, // this an ordinary object
-  0n,
-  BigInt(Number.MAX_SAFE_INTEGER) << 5n
+  {$nat: 42n},
+  {$nat: BigInt(Number.MAX_SAFE_INTEGER) << 5n }
 ];
 
 function toString(a) {
