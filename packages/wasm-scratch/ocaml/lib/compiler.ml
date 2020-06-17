@@ -4,6 +4,7 @@ module Index : sig
   val create : unit -> 'a t
   val id : 'a t -> 'a -> int
   val elements : 'a t -> 'a array
+  val size : 'a t -> int
 end = struct
   type 'a t = ('a, int) Hashtbl.t * int ref
 
@@ -22,35 +23,19 @@ end = struct
     let a = Array.make !size None in
     Hashtbl.iter (fun el id -> a.(id) <- Some el) ht;
     Array.map Option.get a
+
+  let size (_, size) = !size
 end
 
 open Ergo_lib
-
-type global_context =
-  { mutable constants : string list
-  ; mutable constants_size : int
-  ; alloc_p : Ir.global
-  ; memory : Ir.memory
-  }
-
-type local_ctx =
-  { locals : char list Index.t
-  ; global : global_context
-  }
-
-let create_context () = { constants = []
-                        ; constants_size = 0
-                        ; alloc_p = Ir.(global ~mutable_:true i32 [i32_const' 0])
-                        ; memory = Ir.(memory 1)
-                        }
-
-exception Unsupported of string
-let unsupported : type a. string -> a = fun s -> raise (Unsupported s)
 
 type data = Core.ejson
 type op = Core.ejson_op
 type runtime = Core.ejson_runtime_op
 type imp = Core.imp_ejson
+
+exception Unsupported of string
+let unsupported : type a. string -> a = fun s -> raise (Unsupported s)
 
 let encode : data -> bytes = function
   | Ejnull ->
@@ -82,22 +67,74 @@ let encode : data -> bytes = function
   | Ejforeign _ -> unsupported "const: foreign"
   | Ejbigint x -> unsupported "const: bigint"
 
+module Constants : sig
+  type t
+
+  val create : unit -> t
+  val offset : t -> data -> int
+  val data : t -> string
+  val size : t -> int
+end = struct
+  type t = (data, int) Hashtbl.t * string ref * int ref
+
+  let create () = Hashtbl.create 7, ref "", ref 0
+
+  let offset (ht, data, size) x =
+    match Hashtbl.find_opt ht x with
+    | Some offset -> offset
+    | None ->
+      let offset = !size in
+      let el = Bytes.to_string (encode x) in
+      size := String.length el + !size;
+      data := !data ^ (Bytes.to_string (encode x));
+      Hashtbl.add ht x offset;
+      offset
+
+  let data (_, data, _) = !data
+  let size (_, _, size) = !size
+end
+
+type global_context =
+  { constants: Constants.t
+  ; alloc_p : Ir.global
+  ; memory : Ir.memory
+  }
+
+type local_ctx =
+  { locals : char list Index.t
+  ; global : global_context
+  }
+
+let create_context () = { constants = Constants.create ()
+                        ; alloc_p = Ir.(global ~mutable_:true i32 [i32_const' 0])
+                        ; memory = Ir.(memory 1)
+                        }
+
 let const ctx x : Ir.instr =
-  let s = Bytes.to_string (encode x) in
-  let offset = ctx.global.constants_size in
-  ctx.global.constants <- s :: ctx.global.constants;
-  ctx.global.constants_size <- String.length s + ctx.global.constants_size;
+  let offset = Constants.offset ctx.global.constants x in
   Ir.i32_const' offset
 
-let f_not =
-  (* TODO: implement this operator correctly *)
+let c_true ctx = const ctx (Ejbool true)
+let c_false ctx = const ctx (Ejbool false)
+
+(* null and false are "falsy".
+ * null has tag 0. false has tag 1. *)
+let f_not ctx =
   let open Ir in
-  func ~params:[i32] ~result:[i32] [ nop ]
+  func ~params:[i32] ~result:[i32]
+    [ local_get 0
+    ; load ctx.global.memory i32
+    ; i32_const' 1
+    ; i32_le_u
+    ; if_ ~result:[i32]
+        [ c_true ctx ]
+        [ c_false ctx ]
+    ]
 
 let op ctx op args : Ir.instr list =
   let open Ir in
   match (op : op) with
-  | EJsonOpNot -> List.concat (args @ [[call f_not]])
+  | EJsonOpNot -> List.concat (args @ [[call (f_not ctx)]])
   | EJsonOpNeg
   | EJsonOpAnd
   | EJsonOpOr
@@ -171,11 +208,13 @@ let function_ ctx fn : Ir.func =
     statement ctx stmt @
     Ir.[ local_get (Index.id locals ret) ]
   in
-  Ir.(func ~params:[i32] ~result:[i32] body)
+  let locals = List.init (Index.size locals - 1) (fun _ -> Ir.i32) in
+  Ir.(func ~params:[i32] ~result:[i32] ~locals body)
 
 let f_start ctx =
+  let size = Constants.size ctx.constants in
   let open Ir in
-  func [ i32_const' ctx.constants_size; global_set ctx.alloc_p ]
+  func [ i32_const' size; global_set ctx.alloc_p ]
 
 let imp functions : Wasm.Ast.module_ =
   let ctx = create_context () in
@@ -187,5 +226,5 @@ let imp functions : Wasm.Ast.module_ =
     ; globals = ["alloc_p", ctx.alloc_p]
     ; memories = ["memory", ctx.memory]
     ; funcs
-    ; data = [ ctx.memory, 0, String.concat "" (List.rev ctx.constants) ]
+    ; data = [ ctx.memory, 0, Constants.data ctx.constants ]
     }

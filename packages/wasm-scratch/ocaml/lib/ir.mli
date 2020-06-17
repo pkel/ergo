@@ -10,6 +10,12 @@ type instr
 val nop : instr
 val i32_const : int32 -> instr
 val i32_const' : int -> instr
+
+val i32_ge_u : instr
+val i32_gt_u : instr
+val i32_le_u : instr
+val i32_lt_u : instr
+
 val add : type_ -> instr
 
 (** {2} local variables *)
@@ -17,6 +23,13 @@ val add : type_ -> instr
 val local_get : int -> instr
 val local_set : int -> instr
 val local_tee : int -> instr
+
+(** {2} control structure *)
+
+val if_ :
+  ?params: type_ list ->
+  ?result: type_ list ->
+  instr list -> instr list -> instr
 
 (** {2} functions *)
 

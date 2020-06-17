@@ -187,6 +187,7 @@ let compile (m: module_) =
   ; imports = []
   } @@ no_region
 
+
 module Intructions = struct
   open Wasm
 
@@ -211,5 +212,14 @@ module Intructions = struct
     let offset = Int32.of_int (Option.value ~default:0 offset) in
     let _id = compile_memory ctx m in
     Load {ty = type_; align=2; offset; sz=None}
+
+  let i32_ge_u _ = Compare (I32 I32Op.GeU)
+  let i32_gt_u _ = Compare (I32 I32Op.GtU)
+  let i32_le_u _ = Compare (I32 I32Op.LeU)
+  let i32_lt_u _ = Compare (I32 I32Op.LtU)
+
+  let if_ ?(params=[]) ?(result=[]) then_ else_ ctx =
+    let t = compile_func_type ctx ~params ~result in
+    If (VarBlockType t, List.map (compile_instr ctx) then_, List.map (compile_instr ctx) else_)
 end
 include Intructions
