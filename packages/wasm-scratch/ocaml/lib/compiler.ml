@@ -4,11 +4,13 @@ type context =
   { mutable constants : string list
   ; mutable constants_size : int
   ; alloc_p : Ir.global
+  ; memory : Ir.memory
   }
 
 let create_context () = { constants = []
                         ; constants_size = 0
                         ; alloc_p = Ir.(global ~mutable_:true i32 [i32_const' 0])
+                        ; memory = Ir.(memory 1)
                         }
 
 exception Unsupported of string
@@ -114,7 +116,7 @@ let f_start ctx =
 let module_ ctx funcs : Ir.module_ =
   { Ir.start = Some (f_start ctx)
   ; globals = ["alloc_p", ctx.alloc_p]
-  ; memory = Some "memory"
+  ; memories = ["memory", ctx.memory]
   ; funcs
-  ; data = [ 0, String.concat "" (List.rev ctx.constants) ]
+  ; data = [ ctx.memory, 0, String.concat "" (List.rev ctx.constants) ]
   }
