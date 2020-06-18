@@ -131,13 +131,33 @@ let f_not ctx =
         [ c_false ctx ]
     ]
 
-let op ctx op args : Ir.instr list =
+let f_bitwise_binary ctx cmp =
+  let open Ir in
+  func ~params:[i32; i32] ~result:[i32]
+    [ local_get 0
+    ; load ctx.global.memory i32
+    ; i32_const' 1
+    ; i32_le_u
+    ; local_get 1
+    ; load ctx.global.memory i32
+    ; i32_const' 1
+    ; i32_le_u
+    ; cmp
+    ; if_ ~result:[i32]
+        [ c_true ctx ]
+        [ c_false ctx ]
+    ]
+
+let f_and ctx = f_bitwise_binary ctx Ir.i32_and
+let f_or ctx = f_bitwise_binary ctx Ir.i32_or
+
+let op ctx op : Ir.instr list =
   let open Ir in
   match (op : op) with
-  | EJsonOpNot -> List.concat (args @ [[call (f_not ctx)]])
-  | EJsonOpNeg
-  | EJsonOpAnd
-  | EJsonOpOr
+  | EJsonOpNot -> [call (f_not ctx)]
+  | EJsonOpNeg -> unsupported "op: neg"
+  | EJsonOpAnd -> [call (f_and ctx)]
+  | EJsonOpOr -> [call (f_or ctx)]
   | EJsonOpLt
   | EJsonOpLe
   | EJsonOpGt
@@ -175,7 +195,9 @@ let rec expr ctx expression : Ir.instr list =
   | ImpExprError err -> unsupported "expr: error"
   | ImpExprVar v -> [Ir.local_get (Index.id ctx.locals v)]
   | ImpExprConst x -> [const ctx x]
-  | ImpExprOp (x, args) -> op ctx x (List.map (expr ctx) args)
+  | ImpExprOp (x, args) ->
+    (* Put arguments on the stack, append operator *)
+    (List.map (expr ctx) args |> List.concat) @ (op ctx x)
   | ImpExprRuntimeCall (op, args) -> unsupported "expr: runtime call"
 
 let rec statement ctx stmt : Ir.instr list =

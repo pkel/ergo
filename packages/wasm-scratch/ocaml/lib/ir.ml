@@ -208,6 +208,11 @@ module Intructions = struct
     | F32Type -> Binary (F32 F32Op.Add)
     | F64Type -> Binary (F64 F64Op.Add)
 
+  let i32_and _ = Binary (I32 I32Op.And)
+  let i64_and _ = Binary (I64 I64Op.And)
+  let i32_or _ = Binary (I32 I32Op.Or)
+  let i64_or _ = Binary (I64 I64Op.Or)
+
   let load ?offset m type_ ctx =
     let offset = Int32.of_int (Option.value ~default:0 offset) in
     let _id = compile_memory ctx m in

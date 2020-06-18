@@ -18,6 +18,11 @@ val i32_lt_u : instr
 
 val add : type_ -> instr
 
+val i32_and : instr
+val i64_and : instr
+val i32_or : instr
+val i64_or : instr
+
 (** {2} local variables *)
 
 val local_get : int -> instr

@@ -22,6 +22,9 @@ let expressions =
   ; string ""
   ; ImpExprOp (EJsonOpNot, [false_])
   ; ImpExprOp (EJsonOpNot, [true_])
+  ; ImpExprOp (EJsonOpNot, [null])
+  ; ImpExprOp (EJsonOpAnd, [false_; number 1.])
+  ; ImpExprOp (EJsonOpOr, [true_; false_])
   ]
 
 let m =
