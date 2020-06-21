@@ -24,7 +24,7 @@ end = struct
     Array.map Option.get a
 end
 
-type compile_ctx =
+type context =
   { f : Wasm.Ast.func Index.t
   ; g : Wasm.Ast.global Index.t
   ; t : Wasm.Ast.type_ Index.t
@@ -38,7 +38,7 @@ let i64 = Wasm.Types.I64Type
 let f32 = Wasm.Types.F32Type
 let f64 = Wasm.Types.F64Type
 
-type instr = compile_ctx -> Wasm.Ast.instr'
+type instr = context -> Wasm.Ast.instr'
 
 type func =
   { params : type_ list
@@ -98,13 +98,13 @@ module Wasm = struct
   include Source
 end
 
-let compile_func_type (ctx: compile_ctx) ~params ~result =
+let func_to_spec_type (ctx: context) ~params ~result =
   let open Wasm in
   let t = FuncType (params, result) @@ no_region in
   let id = Index.id ctx.t t in
   Int32.of_int id @@ no_region
 
-let rec compile_memory (ctx: compile_ctx) (m : memory) =
+let rec memory_to_spec (ctx: context) (m : memory) =
   let open Wasm in
   let m =
     { mtype = MemoryType {min = m.min_size; max= m.max_size}}
@@ -113,32 +113,32 @@ let rec compile_memory (ctx: compile_ctx) (m : memory) =
   let id = Index.id ctx.m m in
   Int32.of_int id @@ no_region
 
-let rec compile_global (ctx: compile_ctx) (g: global) =
+let rec global_to_spec (ctx: context) (g: global) =
   let open Wasm in
   let g =
     { gtype = GlobalType (g.type_, if g.mutable_ then Mutable else Immutable)
-    ; value = List.map (compile_instr ctx) g.init @@ no_region
+    ; value = List.map (instr_to_spec ctx) g.init @@ no_region
     } @@ no_region (* global 1, constants offset *)
   in
   let id = Index.id ctx.g g in
   Int32.of_int id @@ no_region
 
-and compile_func (ctx: compile_ctx) {params; locals; result; body} =
+and func_to_spec (ctx: context) {params; locals; result; body} =
   let open Wasm in
   let f =
-    { ftype = compile_func_type ctx ~params ~result
+    { ftype = func_to_spec_type ctx ~params ~result
     ; locals
-    ; body = List.map (compile_instr ctx) body
+    ; body = List.map (instr_to_spec ctx) body
     } @@ no_region
   in
   let id = Index.id ctx.f f in
   Int32.of_int id @@ no_region
 
-and compile_instr (ctx: compile_ctx) (instr: instr) =
+and instr_to_spec (ctx: context) (instr: instr) =
   let open Wasm in
   instr ctx @@ no_region
 
-let compile (m: module_) =
+let module_to_spec (m: module_) =
   let open Wasm in
   let ctx =
     { f = Index.create ()
@@ -148,34 +148,34 @@ let compile (m: module_) =
     }
   in
   let f_exports = List.map (fun (name, fn) ->
-      let f = compile_func ctx fn in
+      let f = func_to_spec ctx fn in
       { name = Utf8.decode name
       ; edesc = FuncExport f @@ no_region
       } @@ no_region
     ) m.funcs
   and g_exports = List.map (fun (name, g) ->
-      let g = compile_global ctx g in
+      let g = global_to_spec ctx g in
       { name = Utf8.decode name
       ; edesc = GlobalExport g @@ no_region
       } @@ no_region
     ) m.globals
   and m_exports =
     List.map (fun (name, m) ->
-        let m = compile_memory ctx m in
+        let m = memory_to_spec ctx m in
         { name = Utf8.decode name
         ; edesc = MemoryExport m @@ no_region
         } @@ no_region
     ) m.memories
   and data =
     List.map (fun (m, offset, init) ->
-        let _id = compile_memory ctx m in
+        let _id = memory_to_spec ctx m in
         { index = Int32.zero @@ no_region
         ; offset = [ Const ( I32 (Int32.of_int offset) @@ no_region) @@ no_region ] @@ no_region
         ; init
         } @@ no_region
       ) m.data
   in
-  { start = Option.map (compile_func ctx) m.start
+  { start = Option.map (func_to_spec ctx) m.start
   ; exports = m_exports @ g_exports @ f_exports
   ; types = Array.to_list (Index.elements ctx.t)
   ; funcs = Array.to_list (Index.elements ctx.f)
@@ -197,9 +197,9 @@ module Intructions = struct
   let local_get i _ = LocalGet (Int32.of_int i @@ no_region)
   let local_set i _ = LocalSet (Int32.of_int i @@ no_region)
   let local_tee i _ = LocalTee (Int32.of_int i @@ no_region)
-  let global_get x ctx = GlobalGet (compile_global ctx x)
-  let global_set x ctx = GlobalSet (compile_global ctx x)
-  let call x ctx = Call (compile_func ctx x)
+  let global_get x ctx = GlobalGet (global_to_spec ctx x)
+  let global_set x ctx = GlobalSet (global_to_spec ctx x)
+  let call x ctx = Call (func_to_spec ctx x)
 
   let add ty _ =
     match ty with
@@ -215,7 +215,7 @@ module Intructions = struct
 
   let load ?offset m type_ ctx =
     let offset = Int32.of_int (Option.value ~default:0 offset) in
-    let _id = compile_memory ctx m in
+    let _id = memory_to_spec ctx m in
     Load {ty = type_; align=2; offset; sz=None}
 
   let i32_ge_u _ = Compare (I32 I32Op.GeU)
@@ -224,7 +224,7 @@ module Intructions = struct
   let i32_lt_u _ = Compare (I32 I32Op.LtU)
 
   let if_ ?(params=[]) ?(result=[]) then_ else_ ctx =
-    let t = compile_func_type ctx ~params ~result in
-    If (VarBlockType t, List.map (compile_instr ctx) then_, List.map (compile_instr ctx) else_)
+    let t = func_to_spec_type ctx ~params ~result in
+    If (VarBlockType t, List.map (instr_to_spec ctx) then_, List.map (instr_to_spec ctx) else_)
 end
 include Intructions

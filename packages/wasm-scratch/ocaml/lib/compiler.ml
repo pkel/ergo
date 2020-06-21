@@ -94,15 +94,15 @@ end = struct
   let size (_, _, size) = !size
 end
 
-type global_context =
+type module_context =
   { constants: Constants.t
   ; alloc_p : Ir.global
   ; memory : Ir.memory
   }
 
-type local_ctx =
+type function_ctx =
   { locals : char list Index.t
-  ; global : global_context
+  ; global : module_context
   }
 
 let create_context () = { constants = Constants.create ()
@@ -243,7 +243,7 @@ let imp functions : Wasm.Ast.module_ =
   let funcs = List.map (fun (name, fn) ->
       (Util.string_of_char_list name, function_ ctx fn)) functions
   in
-  Ir.compile
+  Ir.module_to_spec
     { Ir.start = Some (f_start ctx)
     ; globals = ["alloc_p", ctx.alloc_p]
     ; memories = ["memory", ctx.memory]

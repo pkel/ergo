@@ -75,4 +75,4 @@ type module_ =
   ; data : (memory * int * string) list
   }
 
-val compile: module_ -> Wasm.Ast.module_
+val module_to_spec: module_ -> Wasm.Ast.module_

@@ -23,4 +23,4 @@ let m =
   }
 
 let () =
-  Wasm.Print.module_ stdout 72 (compile m)
+  Wasm.Print.module_ stdout 72 (module_to_spec m)
