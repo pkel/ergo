@@ -1,3 +1,4 @@
+module T = Tools
 open Ergo_lib
 open Ergo_wasm
 
@@ -22,14 +23,11 @@ let imp_identity: Core.imp_ejson =
   in
   [Util.char_list_of_string name, imp_f]
 
-let ejson_to_string x =
-  Core.ejsonToString x |> Util.string_of_char_list
-
 let encode_identity_decode inst (x : Core.ejson) =
   let y : Core.ejson = Engine.invoke inst "identity" x in
   if y <> x then (
-    print_endline (ejson_to_string x);
-    print_endline (ejson_to_string y);
+    print_endline (T.ejson_to_string x);
+    print_endline (T.ejson_to_string y);
     failwith "identity"
   )
 

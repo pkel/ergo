@@ -99,11 +99,11 @@ let f_bitwise_binary ctx cmp =
     [ local_get 0
     ; load ctx.global.memory i32
     ; i32_const' 1
-    ; i32_le_u
+    ; i32_gt_u
     ; local_get 1
     ; load ctx.global.memory i32
     ; i32_const' 1
-    ; i32_le_u
+    ; i32_gt_u
     ; cmp
     ; if_ ~result:[i32]
         [ c_true ctx ]
