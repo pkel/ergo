@@ -1,6 +1,5 @@
 open Ergo_lib
-module Ir = Ergo_wasm.Ir
-module Compiler = Ergo_wasm.Compiler
+open Ergo_wasm
 
 module Const = struct
   open Core
@@ -28,7 +27,7 @@ let expressions =
   ]
 
 let m =
-  let imp : Compiler.imp =
+  let imp : Core.imp_ejson =
     List.mapi (fun i e ->
         let open Core in
         let name = "f" ^ Int.to_string i

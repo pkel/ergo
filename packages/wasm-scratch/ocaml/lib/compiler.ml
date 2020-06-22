@@ -27,45 +27,7 @@ end = struct
   let size (_, size) = !size
 end
 
-open Ergo_lib
-
-type data = Core.ejson
-type op = Core.ejson_op
-type runtime = Core.ejson_runtime_op
-type imp = Core.imp_ejson
-
-exception Unsupported of string
-let unsupported : type a. string -> a = fun s -> raise (Unsupported s)
-
-let encode : data -> bytes = function
-  | Ejnull ->
-    let b = Bytes.create 4 in
-    Bytes.set_int32_le b 0 (Int32.of_int 0);
-    b
-  | Ejbool false ->
-    let b = Bytes.create 4 in
-    Bytes.set_int32_le b 0 (Int32.of_int 1);
-    b
-  | Ejbool true ->
-    let b = Bytes.create 4 in
-    Bytes.set_int32_le b 0 (Int32.of_int 2);
-    b
-  | Ejnumber x ->
-    let b = Bytes.create 12 in
-    Bytes.set_int32_le b 0 (Int32.of_int 3);
-    Bytes.set_int64_le b 4 (Int64.bits_of_float x);
-    b
-  | Ejstring s ->
-    let n = List.length s in
-    let b = Bytes.create (8 + n) in
-    Bytes.set_int32_le b 0 (Int32.of_int 4);
-    Bytes.set_int32_le b 4 (Int32.of_int n);
-    List.iteri (fun i c -> Bytes.set b (8 + i) c) s;
-    b
-  | Ejarray _ -> unsupported "const: array"
-  | Ejobject _ -> unsupported "const: object"
-  | Ejforeign _ -> unsupported "const: foreign"
-  | Ejbigint x -> unsupported "const: bigint"
+open Import
 
 module Constants : sig
   type t
@@ -84,9 +46,9 @@ end = struct
     | Some offset -> offset
     | None ->
       let offset = !size in
-      let el = Bytes.to_string (encode x) in
+      let el = Bytes.to_string (Ejson.encode x) in
       size := String.length el + !size;
-      data := !data ^ (Bytes.to_string (encode x));
+      data := !data ^ el;
       Hashtbl.add ht x offset;
       offset
 

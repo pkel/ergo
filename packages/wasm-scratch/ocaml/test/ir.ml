@@ -19,7 +19,7 @@ let m =
   ; funcs = ["add_i32", f_add_i32]
   ; globals = ["alloc_p", g_alloc_p]
   ; memories = ["memory", memory]
-  ; data = [memory ,0, "hello world"]
+  ; data = [memory, 0, "hello world"]
   }
 
 let () =
