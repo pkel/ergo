@@ -24,13 +24,6 @@ end = struct
     Array.map Option.get a
 end
 
-type context =
-  { f : Wasm.Ast.func Index.t
-  ; g : Wasm.Ast.global Index.t
-  ; t : Wasm.Ast.type_ Index.t
-  ; m : Wasm.Ast.memory Index.t
-  }
-
 type type_ = Wasm.Types.value_type
 
 let i32 = Wasm.Types.I32Type
@@ -38,44 +31,65 @@ let i64 = Wasm.Types.I64Type
 let f32 = Wasm.Types.F32Type
 let f64 = Wasm.Types.F64Type
 
-type instr = context -> Wasm.Ast.instr'
+type context =
+  { f : Wasm.Ast.func Index.t
+  ; ty : Wasm.Ast.type_ Index.t
+  ; g : global Index.t
+  ; tab : table Index.t
+  ; m : memory Index.t
+  }
 
-type func =
+and instr = context -> Wasm.Ast.instr'
+
+and func =
   { params : type_ list
   ; result : type_ list
   ; locals : type_ list
   ; body : instr list
   }
 
-let func ?(params=[]) ?(result=[]) ?(locals=[]) body =
-  { params; locals; result; body}
+and table =
+  { t_id: int
+  ; t_min_size: int
+  ; t_max_size: int option
+  }
 
-type global =
-  { id: int
+and global =
+  { g_id: int
   ; mutable_: bool
   ; type_: type_
   ; init: instr list
   }
 
+and memory =
+  { m_id: int
+  ; m_min_size: int
+  ; m_max_size: int option
+  }
+
+let func ?(params=[]) ?(result=[]) ?(locals=[]) body =
+  { params; locals; result; body}
+
+let table =
+  let cnt = ref 0 in
+  fun ?max_size t_min_size ->
+    let t = { t_id = !cnt; t_min_size; t_max_size = max_size} in
+    incr cnt;
+    t
+
 let global =
   let cnt = ref 0 in
   fun ~mutable_ type_ init ->
-    let g = { id = !cnt; mutable_; type_; init } in
+    let g = { g_id = !cnt; mutable_; type_; init } in
     incr cnt; g
-
-type memory =
-  { id: int
-  ; min_size: int32
-  ; max_size: int32 option
-  }
 
 let memory =
   let cnt = ref 0 in
   fun ?max_size min_size ->
     let m =
-      { id = !cnt
-      ; min_size = Int32.of_int min_size
-      ; max_size = Option.map Int32.of_int max_size
+      { m_id = !cnt
+      ; m_min_size = min_size
+      ; m_max_size = max_size
       }
     in
     incr cnt; m
@@ -87,7 +101,9 @@ type module_ =
   ; funcs: func export list
   ; globals: global export list
   ; memories: memory export list
+  ; tables: table export list
   ; data : (memory * int * string) list
+  ; elems: (table * int * func) list
   }
 
 module Wasm = struct
@@ -101,29 +117,19 @@ end
 let func_to_spec_type (ctx: context) ~params ~result =
   let open Wasm in
   let t = FuncType (params, result) @@ no_region in
-  let id = Index.id ctx.t t in
+  let id = Index.id ctx.ty t in
   Int32.of_int id @@ no_region
 
-let rec memory_to_spec (ctx: context) (m : memory) =
+let identify (type a) (idx : a Index.t) (x : a) =
   let open Wasm in
-  let m =
-    { mtype = MemoryType {min = m.min_size; max= m.max_size}}
-     @@ no_region (* global 1, constants offset *)
-  in
-  let id = Index.id ctx.m m in
+  let id = Index.id idx x in
   Int32.of_int id @@ no_region
 
-let rec global_to_spec (ctx: context) (g: global) =
-  let open Wasm in
-  let g =
-    { gtype = GlobalType (g.type_, if g.mutable_ then Mutable else Immutable)
-    ; value = List.map (instr_to_spec ctx) g.init @@ no_region
-    } @@ no_region (* global 1, constants offset *)
-  in
-  let id = Index.id ctx.g g in
-  Int32.of_int id @@ no_region
+let table_to_spec (ctx: context) = identify ctx.tab
+let memory_to_spec (ctx: context) = identify ctx.m
+let global_to_spec (ctx: context) = identify ctx.g
 
-and func_to_spec (ctx: context) {params; locals; result; body} =
+let rec func_to_spec (ctx: context) {params; locals; result; body} =
   let open Wasm in
   let f =
     { ftype = func_to_spec_type ctx ~params ~result
@@ -143,8 +149,9 @@ let module_to_spec (m: module_) =
   let ctx =
     { f = Index.create ()
     ; g = Index.create ()
-    ; t = Index.create ()
     ; m = Index.create ()
+    ; ty = Index.create ()
+    ; tab = Index.create ()
     }
   in
   let f_exports = List.map (fun (name, fn) ->
@@ -167,26 +174,57 @@ let module_to_spec (m: module_) =
         } @@ no_region
     ) m.memories
   and data =
+    (* TODO: this should grow the memory's minimum size *)
     List.map (fun (m, offset, init) ->
-        let _id = memory_to_spec ctx m in
-        { index = Int32.zero @@ no_region
+        { index = memory_to_spec ctx m
         ; offset = [ Const ( I32 (Int32.of_int offset) @@ no_region) @@ no_region ] @@ no_region
         ; init
         } @@ no_region
       ) m.data
+  and elems =
+    (* TODO: this should grow the table's minimum size *)
+    List.map (fun (t, offset, f) ->
+        { index = table_to_spec ctx t
+        ; offset = [ Const ( I32 (Int32.of_int offset) @@ no_region) @@ no_region ] @@ no_region
+        ; init = [ func_to_spec ctx f ]
+        } @@ no_region
+      ) m.elems
+  in
+  let globals =
+    Array.map (fun g ->
+        { gtype = GlobalType (g.type_, if g.mutable_ then Mutable else Immutable)
+        ; value = List.map (instr_to_spec ctx) g.init @@ no_region
+        } @@ no_region
+      ) (Index.elements ctx.g)
+    |> Array.to_list
+  and memories =
+    Array.map (fun m ->
+        { mtype = MemoryType { min = Int32.of_int m.m_min_size
+                             ; max= Option.map Int32.of_int m.m_max_size
+                             }
+        } @@ no_region
+      ) (Index.elements ctx.m)
+    |> Array.to_list
+  and tables =
+    Array.map (fun t ->
+        { ttype = TableType ({ min = Int32.of_int t.t_min_size
+                             ; max= Option.map Int32.of_int t.t_max_size
+                             }, FuncRefType)
+        } @@ no_region
+      ) (Index.elements ctx.tab)
+    |> Array.to_list
   in
   { start = Option.map (func_to_spec ctx) m.start
   ; exports = m_exports @ g_exports @ f_exports
-  ; types = Array.to_list (Index.elements ctx.t)
+  ; types = Array.to_list (Index.elements ctx.ty)
   ; funcs = Array.to_list (Index.elements ctx.f)
-  ; globals = Array.to_list (Index.elements ctx.g)
-  ; tables = []
-  ; elems = []
-  ; memories = Array.to_list (Index.elements ctx.m)
+  ; globals
+  ; tables
+  ; elems
+  ; memories
   ; data
   ; imports = []
   } @@ no_region
-
 
 module Intructions = struct
   open Wasm
@@ -200,6 +238,7 @@ module Intructions = struct
   let global_get x ctx = GlobalGet (global_to_spec ctx x)
   let global_set x ctx = GlobalSet (global_to_spec ctx x)
   let call x ctx = Call (func_to_spec ctx x)
+  let call_indirect x ctx = CallIndirect (table_to_spec ctx x)
 
   let add ty _ =
     match ty with

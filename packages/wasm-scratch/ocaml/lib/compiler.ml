@@ -29,97 +29,28 @@ end
 
 open Import
 
-module Constants : sig
-  type t
-
-  val create : unit -> t
-  val offset : t -> data -> int
-  val data : t -> string
-  val size : t -> int
-end = struct
-  type t = (data, int) Hashtbl.t * string ref * int ref
-
-  let create () = Hashtbl.create 7, ref "", ref 0
-
-  let offset (ht, data, size) x =
-    match Hashtbl.find_opt ht x with
-    | Some offset -> offset
-    | None ->
-      let offset = !size in
-      let el = Bytes.to_string (Ejson.encode x) in
-      size := String.length el + !size;
-      data := !data ^ el;
-      Hashtbl.add ht x offset;
-      offset
-
-  let data (_, data, _) = !data
-  let size (_, _, size) = !size
-end
-
 type module_context =
-  { constants: Constants.t
+  { constants: Ir_lib.Constants.t
   ; alloc_p : Ir.global
   ; memory : Ir.memory
   }
 
-type function_ctx =
+type function_context =
   { locals : char list Index.t
-  ; global : module_context
+  ; lib : Ir_lib.t
   }
 
-let create_context () = { constants = Constants.create ()
+let create_context () = { constants = Ir_lib.Constants.create ()
                         ; alloc_p = Ir.(global ~mutable_:true i32 [i32_const' 0])
                         ; memory = Ir.(memory 1)
                         }
 
-let const ctx x : Ir.instr =
-  let offset = Constants.offset ctx.global.constants x in
-  Ir.i32_const' offset
-
-let c_true ctx = const ctx (Ejbool true)
-let c_false ctx = const ctx (Ejbool false)
-
-(* null and false are "falsy".
- * null has tag 0. false has tag 1. *)
-let f_not ctx =
-  let open Ir in
-  func ~params:[i32] ~result:[i32]
-    [ local_get 0
-    ; load ctx.global.memory i32
-    ; i32_const' 1
-    ; i32_le_u
-    ; if_ ~result:[i32]
-        [ c_true ctx ]
-        [ c_false ctx ]
-    ]
-
-let f_bitwise_binary ctx cmp =
-  let open Ir in
-  func ~params:[i32; i32] ~result:[i32]
-    [ local_get 0
-    ; load ctx.global.memory i32
-    ; i32_const' 1
-    ; i32_gt_u
-    ; local_get 1
-    ; load ctx.global.memory i32
-    ; i32_const' 1
-    ; i32_gt_u
-    ; cmp
-    ; if_ ~result:[i32]
-        [ c_true ctx ]
-        [ c_false ctx ]
-    ]
-
-let f_and ctx = f_bitwise_binary ctx Ir.i32_and
-let f_or ctx = f_bitwise_binary ctx Ir.i32_or
-
-let op ctx op : Ir.instr list =
-  let open Ir in
+let op (module L : Ir_lib.LIB) op : Ir.instr list =
   match (op : op) with
-  | EJsonOpNot -> [call (f_not ctx)]
+  | EJsonOpNot -> [Ir.call L.not]
   | EJsonOpNeg -> unsupported "op: neg"
-  | EJsonOpAnd -> [call (f_and ctx)]
-  | EJsonOpOr -> [call (f_or ctx)]
+  | EJsonOpAnd -> [Ir.call L.and_]
+  | EJsonOpOr -> [Ir.call L.or_]
   | EJsonOpLt
   | EJsonOpLe
   | EJsonOpGt
@@ -153,13 +84,14 @@ let op ctx op : Ir.instr list =
   | EJsonOpMathTrunc -> unsupported "op"
 
 let rec expr ctx expression : Ir.instr list =
+  let module L = (val ctx.lib) in
   match (expression : _ Core.imp_expr) with
   | ImpExprError err -> unsupported "expr: error"
   | ImpExprVar v -> [Ir.local_get (Index.id ctx.locals v)]
-  | ImpExprConst x -> [const ctx x]
+  | ImpExprConst x -> [L.const x]
   | ImpExprOp (x, args) ->
     (* Put arguments on the stack, append operator *)
-    (List.map (expr ctx) args |> List.concat) @ (op ctx x)
+    (List.map (expr ctx) args |> List.concat) @ (op ctx.lib x)
   | ImpExprRuntimeCall (op, args) -> unsupported "expr: runtime call"
 
 let rec statement ctx stmt : Ir.instr list =
@@ -182,10 +114,11 @@ let rec statement ctx stmt : Ir.instr list =
   | ImpStmtForRange _ -> unsupported "statement: for range"
   | ImpStmtIf _ -> unsupported "statement: if"
 
-let function_ ctx fn : Ir.func =
+let function_ {memory; alloc_p; constants} fn : Ir.func =
+  let lib = Ir_lib.make ~memory ~alloc_p ~constants in
   let Core.ImpFun (arg, stmt, ret) = fn in
   let locals = Index.create () in
-  let ctx = { global = ctx; locals } in
+  let ctx = {locals; lib } in
   let l_arg = Index.id locals arg in
   let () = assert (l_arg = 0) in
   let body =
@@ -196,7 +129,7 @@ let function_ ctx fn : Ir.func =
   Ir.(func ~params:[i32] ~result:[i32] ~locals body)
 
 let f_start ctx =
-  let size = Constants.size ctx.constants in
+  let size = Ir_lib.Constants.size ctx.constants in
   let open Ir in
   func [ i32_const' size; global_set ctx.alloc_p ]
 
@@ -209,6 +142,8 @@ let imp functions : Wasm.Ast.module_ =
     { Ir.start = Some (f_start ctx)
     ; globals = ["alloc_p", ctx.alloc_p]
     ; memories = ["memory", ctx.memory]
+    ; tables = []
     ; funcs
-    ; data = [ ctx.memory, 0, Constants.data ctx.constants ]
+    ; data = [ ctx.memory, 0, Ir_lib.Constants.data ctx.constants ]
+    ; elems = []
     }

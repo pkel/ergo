@@ -41,7 +41,6 @@ let () =
     ) l
 
 (* test compilation of operators *)
-
 let expr_expect =
   let open T.Ejson in
   let open T.Imp in

@@ -20,6 +20,8 @@ let m =
   ; globals = ["alloc_p", g_alloc_p]
   ; memories = ["memory", memory]
   ; data = [memory, 0, "hello world"]
+  ; tables = []
+  ; elems = []
   }
 
 let () =

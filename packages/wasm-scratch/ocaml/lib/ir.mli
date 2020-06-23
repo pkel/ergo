@@ -47,6 +47,13 @@ val func:
 
 val call: func -> instr
 
+(** {2} tables **)
+
+type table
+
+val table: ?max_size:int -> int -> table
+val call_indirect: table -> instr
+
 (** {2} global variables *)
 
 type global
@@ -72,7 +79,9 @@ type module_ =
   ; funcs: func export list
   ; globals: global export list
   ; memories: memory export list
-  ; data : (memory * int * string) list
+  ; tables: table export list
+  ; data: (memory * int * string) list
+  ; elems: (table * int * func) list
   }
 
 val module_to_spec: module_ -> Wasm.Ast.module_
