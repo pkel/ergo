@@ -1,36 +1,9 @@
 open Import
 
-module Constants : sig
-  type t
-
-  val create : unit -> t
-  val offset : t -> data -> int
-  val data : t -> string
-  val size : t -> int
-end = struct
-  type t = (data, int) Hashtbl.t * string ref * int ref
-
-  let create () = Hashtbl.create 7, ref "", ref 0
-
-  let offset (ht, data, size) x =
-    match Hashtbl.find_opt ht x with
-    | Some offset -> offset
-    | None ->
-      let offset = !size in
-      let el = Bytes.to_string (Ejson.encode x) in
-      size := String.length el + !size;
-      data := !data ^ el;
-      Hashtbl.add ht x offset;
-      offset
-
-  let data (_, data, _) = !data
-  let size (_, _, size) = !size
-end
-
 module type CONTEXT = sig
   val memory : Ir.memory
   val alloc_p : Ir.global
-  val constants : Constants.t
+  val constants : string Table.t
 end
 
 module type LIB = sig
@@ -45,7 +18,8 @@ end
 
 module Make (C : CONTEXT) : LIB = struct
   let const x : Ir.instr =
-    let offset = Constants.offset C.constants x in
+    let s = Ejson.encode x |> Bytes.to_string in
+    let offset = Table.offset C.constants s in
     Ir.i32_const' offset
 
   let c_true = const (Ejbool true)
@@ -84,7 +58,6 @@ module Make (C : CONTEXT) : LIB = struct
 
   let and_ = boolean_binary Ir.i32_and
   let or_ = boolean_binary Ir.i32_or
-
 end
 
 type t = (module LIB)

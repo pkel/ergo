@@ -1,29 +1,3 @@
-module Index : sig
-  type 'a t
-
-  val create : unit -> 'a t
-  val id : 'a t -> 'a -> int
-  val elements : 'a t -> 'a array
-end = struct
-  type 'a t = ('a, int) Hashtbl.t * int ref
-
-  let create () = Hashtbl.create 7, ref 0
-
-  let id (ht, size) x =
-    match Hashtbl.find_opt ht x with
-    | Some id -> id
-    | None ->
-      let id = !size in
-      Hashtbl.add ht x id;
-      incr size;
-      id
-
-  let elements (ht, size) =
-    let a = Array.make !size None in
-    Hashtbl.iter (fun el id -> a.(id) <- Some el) ht;
-    Array.map Option.get a
-end
-
 type type_ = Wasm.Types.value_type
 
 let i32 = Wasm.Types.I32Type
@@ -32,11 +6,11 @@ let f32 = Wasm.Types.F32Type
 let f64 = Wasm.Types.F64Type
 
 type context =
-  { f : Wasm.Ast.func Index.t
-  ; ty : Wasm.Ast.type_ Index.t
-  ; g : global Index.t
-  ; tab : table Index.t
-  ; m : memory Index.t
+  { f : Wasm.Ast.func Table.t
+  ; ty : Wasm.Ast.type_ Table.t
+  ; g : global Table.t
+  ; tab : table Table.t
+  ; m : memory Table.t
   }
 
 and instr = context -> Wasm.Ast.instr'
@@ -114,15 +88,18 @@ module Wasm = struct
   include Source
 end
 
+open (struct
+  let (@@) = Wasm.Source.(@@)
+  let no_region = Wasm.Source.no_region
+end)
+
 let func_to_spec_type (ctx: context) ~params ~result =
-  let open Wasm in
-  let t = FuncType (params, result) @@ no_region in
-  let id = Index.id ctx.ty t in
+  let t = Wasm.FuncType (params, result) @@ no_region in
+  let id = Table.offset ctx.ty t in
   Int32.of_int id @@ no_region
 
-let identify (type a) (idx : a Index.t) (x : a) =
-  let open Wasm in
-  let id = Index.id idx x in
+let identify (type a) (idx : a Table.t) (x : a) =
+  let id = Table.offset idx x in
   Int32.of_int id @@ no_region
 
 let table_to_spec (ctx: context) = identify ctx.tab
@@ -130,37 +107,37 @@ let memory_to_spec (ctx: context) = identify ctx.m
 let global_to_spec (ctx: context) = identify ctx.g
 
 let rec func_to_spec (ctx: context) {params; locals; result; body} =
-  let open Wasm in
   let f =
+    let open Wasm in
     { ftype = func_to_spec_type ctx ~params ~result
     ; locals
     ; body = List.map (instr_to_spec ctx) body
     } @@ no_region
   in
-  let id = Index.id ctx.f f in
+  let id = Table.offset ctx.f f in
   Int32.of_int id @@ no_region
 
 and instr_to_spec (ctx: context) (instr: instr) =
-  let open Wasm in
   instr ctx @@ no_region
 
 let module_to_spec (m: module_) =
-  let open Wasm in
   let ctx =
-    { f = Index.create ()
-    ; g = Index.create ()
-    ; m = Index.create ()
-    ; ty = Index.create ()
-    ; tab = Index.create ()
+    { f = Table.create ~element_size:(fun _ -> 1)
+    ; g = Table.create ~element_size:(fun _ -> 1)
+    ; m = Table.create ~element_size:(fun _ -> 1)
+    ; ty = Table.create ~element_size:(fun _ -> 1)
+    ; tab = Table.create ~element_size:(fun _ -> 1)
     }
   in
   let f_exports = List.map (fun (name, fn) ->
+      let open Wasm in
       let f = func_to_spec ctx fn in
       { name = Utf8.decode name
       ; edesc = FuncExport f @@ no_region
       } @@ no_region
     ) m.funcs
   and g_exports = List.map (fun (name, g) ->
+      let open Wasm in
       let g = global_to_spec ctx g in
       { name = Utf8.decode name
       ; edesc = GlobalExport g @@ no_region
@@ -168,15 +145,17 @@ let module_to_spec (m: module_) =
     ) m.globals
   and m_exports =
     List.map (fun (name, m) ->
+        let open Wasm in
         let m = memory_to_spec ctx m in
         { name = Utf8.decode name
         ; edesc = MemoryExport m @@ no_region
         } @@ no_region
-    ) m.memories
+      ) m.memories
   and data =
     (* TODO: this should grow the memory's minimum size *)
     List.map (fun (m, offset, init) ->
-        { index = memory_to_spec ctx m
+        let open Wasm in
+        { Wasm.index = memory_to_spec ctx m
         ; offset = [ Const ( I32 (Int32.of_int offset) @@ no_region) @@ no_region ] @@ no_region
         ; init
         } @@ no_region
@@ -184,6 +163,7 @@ let module_to_spec (m: module_) =
   and elems =
     (* TODO: this should grow the table's minimum size *)
     List.map (fun (t, offset, f) ->
+        let open Wasm in
         { index = table_to_spec ctx t
         ; offset = [ Const ( I32 (Int32.of_int offset) @@ no_region) @@ no_region ] @@ no_region
         ; init = [ func_to_spec ctx f ]
@@ -191,33 +171,30 @@ let module_to_spec (m: module_) =
       ) m.elems
   in
   let globals =
-    Array.map (fun g ->
-        { gtype = GlobalType (g.type_, if g.mutable_ then Mutable else Immutable)
+    List.map (fun (_, g) ->
+        { Wasm.gtype = GlobalType (g.type_, if g.mutable_ then Mutable else Immutable)
         ; value = List.map (instr_to_spec ctx) g.init @@ no_region
         } @@ no_region
-      ) (Index.elements ctx.g)
-    |> Array.to_list
+      ) (Table.elements ctx.g)
   and memories =
-    Array.map (fun m ->
-        { mtype = MemoryType { min = Int32.of_int m.m_min_size
-                             ; max= Option.map Int32.of_int m.m_max_size
-                             }
+    List.map (fun (_, m) ->
+        { Wasm.mtype = MemoryType { min = Int32.of_int m.m_min_size
+                                  ; max= Option.map Int32.of_int m.m_max_size
+                                  }
         } @@ no_region
-      ) (Index.elements ctx.m)
-    |> Array.to_list
+      ) (Table.elements ctx.m)
   and tables =
-    Array.map (fun t ->
-        { ttype = TableType ({ min = Int32.of_int t.t_min_size
-                             ; max= Option.map Int32.of_int t.t_max_size
-                             }, FuncRefType)
+    List.map (fun (_, t) ->
+        { Wasm.ttype = TableType ({ min = Int32.of_int t.t_min_size
+                                  ; max= Option.map Int32.of_int t.t_max_size
+                                  }, FuncRefType)
         } @@ no_region
-      ) (Index.elements ctx.tab)
-    |> Array.to_list
+      ) (Table.elements ctx.tab)
   in
-  { start = Option.map (func_to_spec ctx) m.start
+  { Wasm.start = Option.map (func_to_spec ctx) m.start
   ; exports = m_exports @ g_exports @ f_exports
-  ; types = Array.to_list (Index.elements ctx.ty)
-  ; funcs = Array.to_list (Index.elements ctx.f)
+  ; types = List.map snd (Table.elements ctx.ty)
+  ; funcs = List.map snd (Table.elements ctx.f)
   ; globals
   ; tables
   ; elems

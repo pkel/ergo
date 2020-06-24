@@ -1,46 +1,17 @@
-module Index : sig
-  type 'a t
-
-  val create : unit -> 'a t
-  val id : 'a t -> 'a -> int
-  val elements : 'a t -> 'a array
-  val size : 'a t -> int
-end = struct
-  type 'a t = ('a, int) Hashtbl.t * int ref
-
-  let create () = Hashtbl.create 7, ref 0
-
-  let id (ht, size) x =
-    match Hashtbl.find_opt ht x with
-    | Some id -> id
-    | None ->
-      let id = !size in
-      Hashtbl.add ht x id;
-      incr size;
-      id
-
-  let elements (ht, size) =
-    let a = Array.make !size None in
-    Hashtbl.iter (fun el id -> a.(id) <- Some el) ht;
-    Array.map Option.get a
-
-  let size (_, size) = !size
-end
-
 open Import
 
 type module_context =
-  { constants: Ir_lib.Constants.t
+  { constants: string Table.t
   ; alloc_p : Ir.global
   ; memory : Ir.memory
   }
 
 type function_context =
-  { locals : char list Index.t
+  { locals : char list Table.t
   ; lib : Ir_lib.t
   }
 
-let create_context () = { constants = Ir_lib.Constants.create ()
+let create_context () = { constants = Table.create ~element_size:String.length
                         ; alloc_p = Ir.(global ~mutable_:true i32 [i32_const' 0])
                         ; memory = Ir.(memory 1)
                         }
@@ -87,7 +58,7 @@ let rec expr ctx expression : Ir.instr list =
   let module L = (val ctx.lib) in
   match (expression : _ Core.imp_expr) with
   | ImpExprError err -> unsupported "expr: error"
-  | ImpExprVar v -> [Ir.local_get (Index.id ctx.locals v)]
+  | ImpExprVar v -> [Ir.local_get (Table.offset ctx.locals v)]
   | ImpExprConst x -> [L.const x]
   | ImpExprOp (x, args) ->
     (* Put arguments on the stack, append operator *)
@@ -100,7 +71,7 @@ let rec statement ctx stmt : Ir.instr list =
     (* TODO: This assumes that variable names are unique which is not true in general. *)
     let defs =
       List.map (fun (var, value) ->
-          let id = Index.id ctx.locals var in
+          let id = Table.offset ctx.locals var in
           match value with
           | Some x ->  expr ctx x @ [ Ir.local_set id ]
           | None -> []
@@ -109,7 +80,7 @@ let rec statement ctx stmt : Ir.instr list =
     let body = List.map (statement ctx) stmts in
     List.concat (defs @ body)
   | ImpStmtAssign (var, x) ->
-    expr ctx x @ [ Ir.local_set (Index.id ctx.locals var) ]
+    expr ctx x @ [ Ir.local_set (Table.offset ctx.locals var) ]
   | ImpStmtFor _ -> unsupported "statement: for"
   | ImpStmtForRange _ -> unsupported "statement: for range"
   | ImpStmtIf _ -> unsupported "statement: if"
@@ -117,19 +88,19 @@ let rec statement ctx stmt : Ir.instr list =
 let function_ {memory; alloc_p; constants} fn : Ir.func =
   let lib = Ir_lib.make ~memory ~alloc_p ~constants in
   let Core.ImpFun (arg, stmt, ret) = fn in
-  let locals = Index.create () in
+  let locals = Table.create ~element_size:(fun _ -> 1) in
   let ctx = {locals; lib } in
-  let l_arg = Index.id locals arg in
+  let l_arg = Table.offset locals arg in
   let () = assert (l_arg = 0) in
   let body =
     statement ctx stmt @
-    Ir.[ local_get (Index.id locals ret) ]
+    Ir.[ local_get (Table.offset locals ret) ]
   in
-  let locals = List.init (Index.size locals - 1) (fun _ -> Ir.i32) in
+  let locals = List.init (Table.size locals - 1) (fun _ -> Ir.i32) in
   Ir.(func ~params:[i32] ~result:[i32] ~locals body)
 
 let f_start ctx =
-  let size = Ir_lib.Constants.size ctx.constants in
+  let size = Table.size ctx.constants in
   let open Ir in
   func [ i32_const' size; global_set ctx.alloc_p ]
 
@@ -137,13 +108,17 @@ let imp functions : Wasm.Ast.module_ =
   let ctx = create_context () in
   let funcs = List.map (fun (name, fn) ->
       (Util.string_of_char_list name, function_ ctx fn)) functions
+  and f_start = f_start ctx
+  in
+  let data =
+    List.fold_left (fun acc (_, el) -> acc ^ el) "" (Table.elements ctx.constants)
   in
   Ir.module_to_spec
-    { Ir.start = Some (f_start ctx)
+    { Ir.start = Some (f_start)
     ; globals = ["alloc_p", ctx.alloc_p]
     ; memories = ["memory", ctx.memory]
     ; tables = []
     ; funcs
-    ; data = [ ctx.memory, 0, Ir_lib.Constants.data ctx.constants ]
+    ; data = [ ctx.memory, 0, data ]
     ; elems = []
     }
