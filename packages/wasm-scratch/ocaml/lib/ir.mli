@@ -7,15 +7,21 @@ val f64: type_
 
 type instr
 
+val unreachable : instr
 val nop : instr
 val i32_const : int32 -> instr
 val i32_const' : int -> instr
 
-val i32_ge_u : instr
-val i32_gt_u : instr
-val i32_le_u : instr
-val i32_lt_u : instr
+type cmp_op = Ge | Gt | Le | Lt
 
+val i32s_cmp : cmp_op -> instr
+val i32u_cmp : cmp_op -> instr
+val i64s_cmp : cmp_op -> instr
+val i64u_cmp : cmp_op -> instr
+val f32_cmp : cmp_op -> instr
+val f64_cmp : cmp_op -> instr
+
+val eq : type_ -> instr
 val add : type_ -> instr
 
 val i32_and : instr
@@ -36,6 +42,11 @@ val if_ :
   ?result: type_ list ->
   instr list -> instr list -> instr
 
+val loop: ?result: type_ list -> instr list -> instr
+
+val br: int -> instr
+val br_if: int -> instr
+
 (** {2} functions *)
 
 type func
@@ -52,7 +63,9 @@ val call: func -> instr
 type table
 
 val table: ?max_size:int -> int -> table
-val call_indirect: table -> instr
+val call_indirect:
+  ?params: type_ list ->
+  ?result: type_ list -> table -> instr
 
 (** {2} global variables *)
 
@@ -68,7 +81,10 @@ val global_set : global -> instr
 type memory
 
 val memory: ?max_size:int -> int -> memory
-val load : ?offset:int -> memory -> type_ -> instr
+
+type pack = S8 | S16 | S32 | U8 | U16 | U32
+
+val load : memory -> ?pack:pack -> ?offset:int -> type_ -> instr
 
 (** {2} module *)
 

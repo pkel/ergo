@@ -1,27 +1,16 @@
 open Import
 
-type module_context =
-  { constants: string Table.t
-  ; alloc_p : Ir.global
-  ; memory : Ir.memory
-  }
-
 type function_context =
   { locals : char list Table.t
-  ; lib : Ir_lib.t
+  ; runtime : Imp_runtime.t
   }
 
-let create_context () = { constants = Table.create ~element_size:String.length
-                        ; alloc_p = Ir.(global ~mutable_:true i32 [i32_const' 0])
-                        ; memory = Ir.(memory 1)
-                        }
-
-let op (module L : Ir_lib.LIB) op : Ir.instr list =
+let op (module R : Imp_runtime.RUNTIME) op : Ir.instr list =
   match (op : op) with
-  | EJsonOpNot -> [Ir.call L.not]
+  | EJsonOpNot -> [Ir.call R.not]
   | EJsonOpNeg -> unsupported "op: neg"
-  | EJsonOpAnd -> [Ir.call L.and_]
-  | EJsonOpOr -> [Ir.call L.or_]
+  | EJsonOpAnd -> [Ir.call R.and_]
+  | EJsonOpOr -> [Ir.call R.or_]
   | EJsonOpLt
   | EJsonOpLe
   | EJsonOpGt
@@ -55,14 +44,14 @@ let op (module L : Ir_lib.LIB) op : Ir.instr list =
   | EJsonOpMathTrunc -> unsupported "op"
 
 let rec expr ctx expression : Ir.instr list =
-  let module L = (val ctx.lib) in
+  let module R = (val ctx.runtime) in
   match (expression : _ Core.imp_expr) with
   | ImpExprError err -> unsupported "expr: error"
   | ImpExprVar v -> [Ir.local_get (Table.offset ctx.locals v)]
-  | ImpExprConst x -> [L.const x]
+  | ImpExprConst x -> [R.const x]
   | ImpExprOp (x, args) ->
     (* Put arguments on the stack, append operator *)
-    (List.map (expr ctx) args |> List.concat) @ (op ctx.lib x)
+    (List.map (expr ctx) args |> List.concat) @ (op ctx.runtime x)
   | ImpExprRuntimeCall (op, args) -> unsupported "expr: runtime call"
 
 let rec statement ctx stmt : Ir.instr list =
@@ -85,11 +74,10 @@ let rec statement ctx stmt : Ir.instr list =
   | ImpStmtForRange _ -> unsupported "statement: for range"
   | ImpStmtIf _ -> unsupported "statement: if"
 
-let function_ {memory; alloc_p; constants} fn : Ir.func =
-  let lib = Ir_lib.make ~memory ~alloc_p ~constants in
+let function_  runtime fn : Ir.func =
   let Core.ImpFun (arg, stmt, ret) = fn in
   let locals = Table.create ~element_size:(fun _ -> 1) in
-  let ctx = {locals; lib } in
+  let ctx = {locals; runtime } in
   let l_arg = Table.offset locals arg in
   let () = assert (l_arg = 0) in
   let body =
@@ -99,26 +87,27 @@ let function_ {memory; alloc_p; constants} fn : Ir.func =
   let locals = List.init (Table.size locals - 1) (fun _ -> Ir.i32) in
   Ir.(func ~params:[i32] ~result:[i32] ~locals body)
 
-let f_start ctx =
-  let size = Table.size ctx.constants in
+let f_start (module R : Imp_runtime.RUNTIME) =
+  let size = Table.size R.Ctx.constants in
   let open Ir in
-  func [ i32_const' size; global_set ctx.alloc_p ]
+  func [ i32_const' size; global_set R.Ctx.alloc_p ]
 
 let imp functions : Wasm.Ast.module_ =
-  let ctx = create_context () in
+  let runtime = Imp_runtime.create () in
   let funcs = List.map (fun (name, fn) ->
-      (Util.string_of_char_list name, function_ ctx fn)) functions
-  and f_start = f_start ctx
+      (Util.string_of_char_list name, function_ runtime fn)) functions
+  and f_start = f_start runtime
   in
+  let module R = (val runtime) in
   let data =
-    List.fold_left (fun acc (_, el) -> acc ^ el) "" (Table.elements ctx.constants)
+    List.fold_left (fun acc (_, el) -> acc ^ el) "" (Table.elements R.Ctx.constants)
   in
   Ir.module_to_spec
     { Ir.start = Some (f_start)
-    ; globals = ["alloc_p", ctx.alloc_p]
-    ; memories = ["memory", ctx.memory]
+    ; globals = ["alloc_p", R.Ctx.alloc_p]
+    ; memories = ["memory", R.Ctx.memory]
     ; tables = []
     ; funcs
-    ; data = [ ctx.memory, 0, data ]
+    ; data = [ R.Ctx.memory, 0, data ]
     ; elems = []
     }

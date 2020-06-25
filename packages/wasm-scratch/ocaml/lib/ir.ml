@@ -203,10 +203,14 @@ let module_to_spec (m: module_) =
   ; imports = []
   } @@ no_region
 
+type cmp_op = Ge | Gt | Le | Lt
+type pack = S8 | S16 | S32 | U8 | U16 | U32
+
 module Intructions = struct
   open Wasm
 
   let nop _ = Nop
+  let unreachable _ = Unreachable
   let i32_const x _ = Const (I32 x @@ no_region)
   let i32_const' x = i32_const (Int32.of_int x)
   let local_get i _ = LocalGet (Int32.of_int i @@ no_region)
@@ -215,7 +219,59 @@ module Intructions = struct
   let global_get x ctx = GlobalGet (global_to_spec ctx x)
   let global_set x ctx = GlobalSet (global_to_spec ctx x)
   let call x ctx = Call (func_to_spec ctx x)
-  let call_indirect x ctx = CallIndirect (table_to_spec ctx x)
+  let call_indirect ?(params=[]) ?(result=[]) x ctx =
+    let _ = table_to_spec ctx x in
+    let t = func_to_spec_type ctx ~params ~result in
+    CallIndirect (t)
+
+  let eq ty _ =
+    match ty with
+    | I32Type -> Compare (I32 I32Op.Eq)
+    | I64Type -> Compare (I64 I64Op.Eq)
+    | F32Type -> Compare (F32 F32Op.Eq)
+    | F64Type -> Compare (F64 F64Op.Eq)
+
+  let i32s_cmp op _ =
+    match op with
+    | Ge -> Compare (I32 I32Op.GeS)
+    | Gt -> Compare (I32 I32Op.GtS)
+    | Le -> Compare (I32 I32Op.LeS)
+    | Lt -> Compare (I32 I32Op.LtS)
+
+  let i32u_cmp op _ =
+    match op with
+    | Ge -> Compare (I32 I32Op.GeU)
+    | Gt -> Compare (I32 I32Op.GtU)
+    | Le -> Compare (I32 I32Op.LeU)
+    | Lt -> Compare (I32 I32Op.LtU)
+
+  let i64s_cmp op _ =
+    match op with
+    | Ge -> Compare (I64 I64Op.GeS)
+    | Gt -> Compare (I64 I64Op.GtS)
+    | Le -> Compare (I64 I64Op.LeS)
+    | Lt -> Compare (I64 I64Op.LtS)
+
+  let i64u_cmp op _ =
+    match op with
+    | Ge -> Compare (I64 I64Op.GeU)
+    | Gt -> Compare (I64 I64Op.GtU)
+    | Le -> Compare (I64 I64Op.LeU)
+    | Lt -> Compare (I64 I64Op.LtU)
+
+  let f32_cmp op _ =
+    match op with
+    | Ge -> Compare (F32 F32Op.Ge)
+    | Gt -> Compare (F32 F32Op.Gt)
+    | Le -> Compare (F32 F32Op.Le)
+    | Lt -> Compare (F32 F32Op.Lt)
+
+  let f64_cmp op _ =
+    match op with
+    | Ge -> Compare (F64 F64Op.Ge)
+    | Gt -> Compare (F64 F64Op.Gt)
+    | Le -> Compare (F64 F64Op.Le)
+    | Lt -> Compare (F64 F64Op.Lt)
 
   let add ty _ =
     match ty with
@@ -229,18 +285,29 @@ module Intructions = struct
   let i32_or _ = Binary (I32 I32Op.Or)
   let i64_or _ = Binary (I64 I64Op.Or)
 
-  let load ?offset m type_ ctx =
+  let load m ?pack ?offset type_ ctx =
+    let sz = Option.map (function
+        | S8 -> Pack8, SX
+        | S16 -> Pack16, SX
+        | S32 -> Pack32, SX
+        | U8 -> Pack8, ZX
+        | U16 -> Pack16, ZX
+        | U32 -> Pack32, ZX
+      ) pack
+    in
     let offset = Int32.of_int (Option.value ~default:0 offset) in
     let _id = memory_to_spec ctx m in
-    Load {ty = type_; align=2; offset; sz=None}
-
-  let i32_ge_u _ = Compare (I32 I32Op.GeU)
-  let i32_gt_u _ = Compare (I32 I32Op.GtU)
-  let i32_le_u _ = Compare (I32 I32Op.LeU)
-  let i32_lt_u _ = Compare (I32 I32Op.LtU)
+    Load {ty = type_; align=2; offset; sz}
 
   let if_ ?(params=[]) ?(result=[]) then_ else_ ctx =
     let t = func_to_spec_type ctx ~params ~result in
     If (VarBlockType t, List.map (instr_to_spec ctx) then_, List.map (instr_to_spec ctx) else_)
+
+  let loop ?(result=[]) body ctx =
+    let t = func_to_spec_type ctx ~params:[] ~result in
+    Loop (VarBlockType t, List.map (instr_to_spec ctx) body)
+
+  let br i _ = Br (Int32.of_int i @@ no_region)
+  let br_if i _ = BrIf (Int32.of_int i @@ no_region)
 end
 include Intructions

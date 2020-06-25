@@ -285,8 +285,8 @@
         $cmp_nullary      ;; true
         $cmp_f64_pointer  ;; number
         $cmp_string       ;; string
-        $cmp_array        ;; TODO: array
-        $cmp_object       ;; TODO: object
+        $cmp_array        ;; array
+        $cmp_object       ;; object
         $cmp_unary        ;; left
         $cmp_unary        ;; right
         $cmp_i64s_pointer ;; bigint64
