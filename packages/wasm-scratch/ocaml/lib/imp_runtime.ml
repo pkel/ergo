@@ -18,7 +18,7 @@ module type RUNTIME = sig
   val not : Ir.func
   val or_ : Ir.func
   val and_ : Ir.func
-  val compare : Ir.func
+  val compare : Ir.cmp_op -> Ir.func
 end
 
 module Create () : RUNTIME = struct
@@ -26,7 +26,7 @@ module Create () : RUNTIME = struct
 
   let memory = memory 1
   let alloc_p = global ~mutable_:true i32 [i32_const' 0]
-  let table = table 1
+  let table = table 10 (* TODO: make sure that this grows automatically on ir -> spec compilation *)
   let constants = Table.create ~element_size:String.length
 
   let load = load memory
@@ -101,7 +101,7 @@ module Create () : RUNTIME = struct
   let cmp_ref_i64s = cmp_ref i64 cmp_val_i64s
   let cmp_ref_f64 = cmp_ref f64 cmp_val_f64
 
-  let compare =
+  let cmp_box =
     let a, b, res = 0, 1, 2 in
     func ~params:[i32; i32] ~result:[i32] ~locals:[i32]
       [ (* compare tags *) local_get a; local_get b; call cmp_ref_i32u
@@ -123,7 +123,7 @@ module Create () : RUNTIME = struct
     func ~params:[i32; i32] ~result:[i32]
       [ local_get 0; load i32
       ; local_get 1; load i32
-      ; call compare
+      ; call cmp_box
       ]
 
   let cmp_string =
@@ -170,6 +170,18 @@ module Create () : RUNTIME = struct
     ; cmp_ref (* right *)
     ; cmp_ref_i64s (* "bigint" *)
     ]
+
+  let compare op =
+    func ~params:[i32; i32] ~result:[i32]
+      [ local_get 0
+      ; local_get 1
+      ; call cmp_box
+      ; i32_const' (0)
+      ; i32s_cmp op
+      ; if_ ~result:[i32]
+          [ c_true ]
+          [ c_false ]
+      ]
 
   module Ctx : CONTEXT = struct
     let memory = memory

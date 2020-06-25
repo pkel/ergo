@@ -56,6 +56,18 @@ let expr_expect =
   ; or_ [c_false; c_true], true_
   ; or_ [c_true; c_false], true_
   ; or_ [c_false; c_false], false_
+  ; lt [c_number 1.0; c_number 1.0], false_
+  ; lt [c_number 1.0; c_number 1.1], true_
+  ; lt [c_number 1.1; c_number 1.0], false_
+  ; gt [c_number 1.0; c_number 1.0], false_
+  ; gt [c_number 1.0; c_number 1.1], false_
+  ; gt [c_number 1.1; c_number 1.0], true_
+  ; le [c_number 1.0; c_number 1.0], true_
+  ; le [c_number 1.0; c_number 1.1], true_
+  ; le [c_number 1.1; c_number 1.0], false_
+  ; ge [c_number 1.0; c_number 1.0], true_
+  ; ge [c_number 1.0; c_number 1.1], false_
+  ; ge [c_number 1.1; c_number 1.0], true_
   ]
 
 let () =

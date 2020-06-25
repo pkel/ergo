@@ -11,10 +11,10 @@ let op (module R : Imp_runtime.RUNTIME) op : Ir.instr list =
   | EJsonOpNeg -> unsupported "op: neg"
   | EJsonOpAnd -> [Ir.call R.and_]
   | EJsonOpOr -> [Ir.call R.or_]
-  | EJsonOpLt
-  | EJsonOpLe
-  | EJsonOpGt
-  | EJsonOpGe
+  | EJsonOpLt -> Ir.[call (R.compare Lt)]
+  | EJsonOpLe -> Ir.[call (R.compare Le)]
+  | EJsonOpGt -> Ir.[call (R.compare Gt)]
+  | EJsonOpGe -> Ir.[call (R.compare Ge)]
   | EJsonOpAddString
   | EJsonOpAddNumber
   | EJsonOpSub
@@ -109,5 +109,5 @@ let imp functions : Wasm.Ast.module_ =
     ; tables = []
     ; funcs
     ; data = [ R.Ctx.memory, 0, data ]
-    ; elems = []
+    ; elems = List.map (fun (a,b) -> R.Ctx.table, a, b) R.Ctx.elems
     }

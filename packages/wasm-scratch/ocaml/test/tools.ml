@@ -19,6 +19,10 @@ module Imp = struct
   let not a = op EJsonOpNot a
   let and_ a = op EJsonOpAnd a
   let or_ a = op EJsonOpOr a
+  let lt a = op EJsonOpLt a
+  let gt a = op EJsonOpGt a
+  let le a = op EJsonOpLe a
+  let ge a = op EJsonOpGe a
 
   open Ejson
   let c_null = const null
